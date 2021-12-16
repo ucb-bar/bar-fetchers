@@ -14,8 +14,8 @@ trait CanInstantiatePrefetcher {
 }
 
 case class TLPrefetcherParams(
-  prefetchIds: Int = 16,
-  prefetchers: Seq[CanInstantiatePrefetcher] = Nil
+  prefetchIds: Int = 4,
+  prefetchers: Seq[CanInstantiatePrefetcher] = Seq(SingleNextLinePrefetcherParams())
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
@@ -46,11 +46,11 @@ abstract class AbstractPrefetcher(implicit p: Parameters) extends Module {
 
 class NullPrefetcher(implicit p: Parameters) extends AbstractPrefetcher()(p)
 
-class TLPrefetcher()(implicit p: Parameters) extends LazyModule {
+class TLPrefetcher(name: String)(implicit p: Parameters) extends LazyModule {
   val params = p(TLPrefetcherKey)
   val node = TLClientNode(Seq(TLMasterPortParameters.v1(Seq(TLMasterParameters.v1(
     sourceId = IdRange(0, params.prefetchIds),
-    name = s"TLPrefetcher")))))
+    name = s"$name Prefetcher")))))
 
   lazy val module = new LazyModuleImp(this) {
     val io = IO(new Bundle {
@@ -58,7 +58,7 @@ class TLPrefetcher()(implicit p: Parameters) extends LazyModule {
     })
     val (tl_out, edge) = node.out(0)
 
-    val prefetchers = Seq(Module(new NullPrefetcher)) ++ params.prefetchers.map(_.instantiate())
+    val prefetchers = params.prefetchers.map(_.instantiate())
     val prefetch_arb = Module(new Arbiter(new PrefetchBundle, prefetchers.size))
 
     prefetch_arb.io.in(0).valid := false.B
@@ -109,13 +109,17 @@ class TLSnoopingXbar(policy: TLArbiter.Policy = TLArbiter.roundRobin)(implicit p
 }
 
 object TLPrefetcher {
-  def apply()(implicit p: Parameters) = {
-    val xbar = LazyModule(new TLSnoopingXbar(TLArbiter.highestIndexFirst))
-    val prefetcher = LazyModule(new TLPrefetcher)
-    xbar.node := prefetcher.node
-    InModuleBody {
-      prefetcher.module.io.snoop := xbar.snoop
+  def apply(name: String)(implicit p: Parameters) = {
+    if (p(TLPrefetcherKey).prefetchers.size == 0) {
+      TLTempNode()
+    } else {
+      val xbar = LazyModule(new TLSnoopingXbar(TLArbiter.highestIndexFirst))
+      val prefetcher = LazyModule(new TLPrefetcher(name))
+      xbar.node := prefetcher.node
+      InModuleBody {
+        prefetcher.module.io.snoop := xbar.snoop
+      }
+      xbar.node
     }
-    xbar.node
   }
 }
