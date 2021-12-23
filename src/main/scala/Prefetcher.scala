@@ -20,7 +20,16 @@ case class TLPrefetcherParams(
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
 
-class PrefetchBundle(implicit val p: Parameters) extends Bundle {
+class Snoop(implicit val p: Parameters) extends Bundle {
+  val blockBytes = p(CacheBlockBytes)
+
+  val write = Bool()
+  val address = UInt()
+  def block = address >> log2Up(blockBytes)
+  def block_address = block << log2Up(blockBytes)
+}
+
+class Prefetch(implicit val p: Parameters) extends Bundle {
   val blockBytes = p(CacheBlockBytes)
 
   val write = Bool()
@@ -30,8 +39,8 @@ class PrefetchBundle(implicit val p: Parameters) extends Bundle {
 }
 
 class PrefetcherIO(implicit p: Parameters) extends Bundle {
-  val snoop = Input(Valid(new PrefetchBundle))
-  val request = Decoupled(new PrefetchBundle)
+  val snoop = Input(Valid(new Snoop))
+  val request = Decoupled(new Prefetch)
   val hit = Output(Bool())
 }
 
@@ -74,7 +83,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       println(outIdMap)
 
 
-      val snoop = Wire(Valid(new PrefetchBundle))
+      val snoop = Wire(Valid(new Snoop))
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
 
       // Implement prefetchers per client. TODO: Support heterogenous prefetchers per client
@@ -83,11 +92,11 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         f.foreach(_.io.snoop.valid := snoop.valid && snoop_client === i.U)
         f.foreach(_.io.snoop.bits := snoop.bits)
 
-        val arb = Module(new Arbiter(new PrefetchBundle, f.size))
+        val arb = Module(new Arbiter(new Prefetch, f.size))
         arb.io.in <> f.map(_.io.request)
         arb
       }
-      val out_arb = Module(new RRArbiter(new PrefetchBundle, nClients))
+      val out_arb = Module(new RRArbiter(new Prefetch, nClients))
       out_arb.io.in <> client_arbs.map(_.io.out)
 
       val tracker = RegInit(0.U(params.prefetchIds.W))
@@ -147,25 +156,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         out_arb.io.out.ready := true.B
       }
     }
-  }
-}
-
-class TLSnoopingXbar(policy: TLArbiter.Policy = TLArbiter.roundRobin)(implicit p: Parameters) extends TLXbar(policy)(p)
-{
-  // TODO: Make this snoop C channel as well
-  val snoop = InModuleBody {
-    require(node.in.size == 2)
-    val snoop = IO(Output(Valid(new PrefetchBundle)))
-    val edge = node.in(1)._2
-    val tl_a = node.in(1)._1.a
-
-    snoop.valid := tl_a.fire()
-    val acq = tl_a.bits.opcode.isOneOf(TLMessages.AcquireBlock, TLMessages.AcquirePerm)
-    val toT = tl_a.bits.param.isOneOf(TLPermissions.NtoT, TLPermissions.BtoT)
-    val put = edge.hasData(tl_a.bits)
-    snoop.bits.write := put || (acq && toT)
-    snoop.bits.address := tl_a.bits.address
-    snoop
   }
 }
 
