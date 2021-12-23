@@ -46,46 +46,107 @@ abstract class AbstractPrefetcher(implicit p: Parameters) extends Module {
 
 class NullPrefetcher(implicit p: Parameters) extends AbstractPrefetcher()(p)
 
-class TLPrefetcher(name: String)(implicit p: Parameters) extends LazyModule {
+class TLPrefetcher(implicit p: Parameters) extends LazyModule {
   val params = p(TLPrefetcherKey)
-  val node = TLClientNode(Seq(TLMasterPortParameters.v1(Seq(TLMasterParameters.v1(
-    sourceId = IdRange(0, params.prefetchIds),
-    name = s"$name Prefetcher")))))
+
+  def mapInputIds(masters: Seq[TLMasterParameters]) = TLXbar.assignRanges(masters.map(_.sourceId.size + params.prefetchIds))
+
+  val node = TLAdapterNode(
+    clientFn = { cp =>
+      println(cp.clients)
+      cp.v1copy(clients = (mapInputIds(cp.clients) zip cp.clients).map { case (range, c) => c.v1copy(
+        sourceId = range
+      )})
+    },
+    managerFn = { mp => mp }
+  )
+
+  // Handle size = 1 gracefully (Chisel3 empty range is broken)
+  def trim(id: UInt, size: Int): UInt = if (size <= 1) 0.U else id(log2Ceil(size)-1, 0)
 
   lazy val module = new LazyModuleImp(this) {
-    val io = IO(new Bundle {
-      val snoop = Input(Valid(new PrefetchBundle))
-    })
-    val (tl_out, edge) = node.out(0)
+    (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
+      val nClients = edgeOut.master.clients.size
+      val outIdMap = edgeOut.master.clients.map(_.sourceId)
+      val inIdMap = edgeIn.master.clients.map(_.sourceId)
 
-    val prefetchers = params.prefetchers.map(_.instantiate())
-    val prefetch_arb = Module(new Arbiter(new PrefetchBundle, prefetchers.size))
+      println(inIdMap)
+      println(outIdMap)
 
-    prefetch_arb.io.in(0).valid := false.B
-    prefetch_arb.io.in(0).bits := DontCare
-    (prefetchers zip prefetch_arb.io.in) map { case (m, in) =>
-      m.io.snoop := io.snoop
-      in <> m.io.request
+
+      val snoop = Wire(Valid(new PrefetchBundle))
+      val snoop_client = Wire(UInt(log2Ceil(nClients).W))
+
+      // Implement prefetchers per client. TODO: Support heterogenous prefetchers per client
+      val prefetchers = Seq.fill(nClients) { params.prefetchers.map(_.instantiate()) }
+      val client_arbs = prefetchers.zipWithIndex.map { case (f,i) =>
+        f.foreach(_.io.snoop.valid := snoop.valid && snoop_client === i.U)
+        f.foreach(_.io.snoop.bits := snoop.bits)
+
+        val arb = Module(new Arbiter(new PrefetchBundle, f.size))
+        arb.io.in <> f.map(_.io.request)
+        arb
+      }
+      val out_arb = Module(new RRArbiter(new PrefetchBundle, nClients))
+      out_arb.io.in <> client_arbs.map(_.io.out)
+
+      val tracker = RegInit(0.U(params.prefetchIds.W))
+      val next_tracker = PriorityEncoder(~tracker)
+      val tracker_free = !tracker(next_tracker)
+
+      def inIdAdjuster(source: UInt) = Mux1H((inIdMap zip outIdMap).map { case (i,o) =>
+        i.contains(source) -> (o.start.U | (source - i.start.U))
+      })
+      def outIdAdjuster(source: UInt) = Mux1H((inIdMap zip outIdMap).map { case (i,o) =>
+        o.contains(source) -> (trim(source - o.start.U, i.size) + i.start.U)
+      })
+      def outIdToPrefetchId(source: UInt) = Mux1H((inIdMap zip outIdMap).map { case (i,o) =>
+        o.contains(source) -> trim(source - (o.start + i.size).U, params.prefetchIds)
+      })
+      def prefetchIdToOutId(source: UInt, client: UInt) = Mux1H((inIdMap zip outIdMap).zipWithIndex.map { case ((i,o),id) =>
+        (id.U === client) -> ((o.start + i.size).U +& source)
+      })
+      def inIdToClientId(source: UInt) = Mux1H(inIdMap.zipWithIndex.map { case (i,id) =>
+        i.contains(source) -> id.U
+      })
+
+      out <> in
+      out.a.bits.source := inIdAdjuster(in.a.bits.source)
+      in.b.bits.source := outIdAdjuster(out.b.bits.source)
+      out.c.bits.source := inIdAdjuster(in.c.bits.source)
+      val d_is_prefetch = out.d.bits.opcode === TLMessages.HintAck
+      in.d.valid := out.d.valid && !d_is_prefetch
+      when (d_is_prefetch) { out.d.ready := true.B }
+      in.d.bits.source := outIdAdjuster(out.d.bits.source)
+
+      tracker := (tracker
+        ^ ((out.d.valid && d_is_prefetch) << outIdToPrefetchId(out.d.bits.source))
+        ^ ((out.a.fire() && !in.a.valid) << next_tracker)
+      )
+      snoop.valid := in.a.fire() && edgeIn.manager.supportsAcquireBFast(in.a.bits.address, log2Ceil(p(CacheBlockBytes)).U)
+      snoop.bits.address := in.a.bits.address
+      val acq = in.a.bits.opcode.isOneOf(TLMessages.AcquireBlock, TLMessages.AcquirePerm)
+      val toT = in.a.bits.param.isOneOf(TLPermissions.NtoT, TLPermissions.BtoT)
+      val put = edgeIn.hasData(in.a.bits)
+      snoop.bits.write := put || (acq && toT)
+      snoop_client := inIdToClientId(in.a.bits.source)
+
+      val (legal, hint) = edgeOut.Hint(
+        prefetchIdToOutId(next_tracker, out_arb.io.chosen),
+        out_arb.io.out.bits.block_address,
+        log2Up(p(CacheBlockBytes)).U,
+        Mux(out_arb.io.out.bits.write, TLHints.PREFETCH_WRITE, TLHints.PREFETCH_READ)
+      )
+      out_arb.io.out.ready := false.B
+      when (!in.a.valid) {
+        out.a.valid := out_arb.io.out.valid && tracker_free && legal
+        out.a.bits := hint
+        out_arb.io.out.ready := out.a.ready
+      }
+      when (!legal) {
+        out_arb.io.out.ready := true.B
+      }
     }
-
-    val tracker = RegInit(0.U(params.prefetchIds.W))
-    val next_tracker = PriorityEncoder(~tracker)
-    val tracker_free = !tracker(next_tracker)
-
-    tracker := tracker ^ (tl_out.d.valid << tl_out.d.bits.source) ^ (tl_out.a.fire() << next_tracker)
-
-    prefetch_arb.io.out.ready := tl_out.a.ready && tracker_free
-    val blockSize = p(CacheBlockBytes)
-    val (legal, hint) = edge.Hint(
-      next_tracker,
-      prefetch_arb.io.out.bits.block_address,
-      log2Up(blockSize).U,
-      Mux(prefetch_arb.io.out.bits.write, TLHints.PREFETCH_WRITE, TLHints.PREFETCH_READ)
-    )
-    tl_out.a.valid := prefetch_arb.io.out.valid && tracker_free && legal
-    tl_out.a.bits := hint
-
-    tl_out.d.ready := true.B
   }
 }
 
@@ -109,17 +170,12 @@ class TLSnoopingXbar(policy: TLArbiter.Policy = TLArbiter.roundRobin)(implicit p
 }
 
 object TLPrefetcher {
-  def apply(name: String)(implicit p: Parameters) = {
+  def apply()(implicit p: Parameters) = {
     if (p(TLPrefetcherKey).prefetchers.size == 0) {
       TLTempNode()
     } else {
-      val xbar = LazyModule(new TLSnoopingXbar(TLArbiter.highestIndexFirst))
-      val prefetcher = LazyModule(new TLPrefetcher(name))
-      xbar.node := prefetcher.node
-      InModuleBody {
-        prefetcher.module.io.snoop := xbar.snoop
-      }
-      xbar.node
+      val prefetcher = LazyModule(new TLPrefetcher)
+      prefetcher.node
     }
   }
 }

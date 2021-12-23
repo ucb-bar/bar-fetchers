@@ -12,7 +12,7 @@ import freechips.rocketchip.subsystem._
 case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
   val where = base.where
   def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
-    TLPrefetcher(s"Core $hartId") := base.injectNode(context)(p)
+    TLPrefetcher() := base.injectNode(context)(p)
   }
 }
 
