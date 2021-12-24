@@ -17,6 +17,6 @@ case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike
 }
 
 class WithSingleNLPrefetcher extends Config((site, here, up) => {
-  case TLPrefetcherKey => up(TLPrefetcherKey).copy(prefetchers=up(TLPrefetcherKey).prefetchers ++ Seq(SingleNextLinePrefetcherParams()))
+  case TLPrefetcherKey => up(TLPrefetcherKey).copy(prefetcher=SingleNextLinePrefetcherParams())
 })
 

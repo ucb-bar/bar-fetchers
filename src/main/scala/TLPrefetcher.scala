@@ -9,51 +9,12 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.subsystem.{CacheBlockBytes}
 
-trait CanInstantiatePrefetcher {
-  def instantiate()(implicit p: Parameters): AbstractPrefetcher
-}
-
 case class TLPrefetcherParams(
   prefetchIds: Int = 4,
-  prefetchers: Seq[CanInstantiatePrefetcher] = Seq(SingleNextLinePrefetcherParams())
+  prefetcher: CanInstantiatePrefetcher = SingleNextLinePrefetcherParams()
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
-
-class Snoop(implicit val p: Parameters) extends Bundle {
-  val blockBytes = p(CacheBlockBytes)
-
-  val write = Bool()
-  val address = UInt()
-  def block = address >> log2Up(blockBytes)
-  def block_address = block << log2Up(blockBytes)
-}
-
-class Prefetch(implicit val p: Parameters) extends Bundle {
-  val blockBytes = p(CacheBlockBytes)
-
-  val write = Bool()
-  val address = UInt()
-  def block = address >> log2Up(blockBytes)
-  def block_address = block << log2Up(blockBytes)
-}
-
-class PrefetcherIO(implicit p: Parameters) extends Bundle {
-  val snoop = Input(Valid(new Snoop))
-  val request = Decoupled(new Prefetch)
-  val hit = Output(Bool())
-}
-
-abstract class AbstractPrefetcher(implicit p: Parameters) extends Module {
-  val io = IO(new PrefetcherIO)
-
-  io.request.valid := false.B
-  io.request.bits := DontCare
-  io.request.bits.address := 0.U(1.W)
-  io.hit := false.B
-}
-
-class NullPrefetcher(implicit p: Parameters) extends AbstractPrefetcher()(p)
 
 class TLPrefetcher(implicit p: Parameters) extends LazyModule {
   val params = p(TLPrefetcherKey)
@@ -87,17 +48,14 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
 
       // Implement prefetchers per client. TODO: Support heterogenous prefetchers per client
-      val prefetchers = Seq.fill(nClients) { params.prefetchers.map(_.instantiate()) }
-      val client_arbs = prefetchers.zipWithIndex.map { case (f,i) =>
-        f.foreach(_.io.snoop.valid := snoop.valid && snoop_client === i.U)
-        f.foreach(_.io.snoop.bits := snoop.bits)
-
-        val arb = Module(new Arbiter(new Prefetch, f.size))
-        arb.io.in <> f.map(_.io.request)
-        arb
+      val prefetchers = Seq.tabulate(nClients) { i =>
+        val prefetcher = params.prefetcher.instantiate()
+        prefetcher.io.snoop.valid := snoop.valid && snoop_client === i.U
+        prefetcher.io.snoop.bits := snoop.bits
+        prefetcher
       }
       val out_arb = Module(new RRArbiter(new Prefetch, nClients))
-      out_arb.io.in <> client_arbs.map(_.io.out)
+      out_arb.io.in <> prefetchers.map(_.io.request)
 
       val tracker = RegInit(0.U(params.prefetchIds.W))
       val next_tracker = PriorityEncoder(~tracker)
@@ -161,11 +119,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
 object TLPrefetcher {
   def apply()(implicit p: Parameters) = {
-    if (p(TLPrefetcherKey).prefetchers.size == 0) {
-      TLTempNode()
-    } else {
-      val prefetcher = LazyModule(new TLPrefetcher)
-      prefetcher.node
-    }
+    val prefetcher = LazyModule(new TLPrefetcher)
+    prefetcher.node
   }
 }
