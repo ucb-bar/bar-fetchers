@@ -7,7 +7,7 @@ import freechips.rocketchip.config.{Field, Parameters}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.subsystem.{CacheBlockBytes}
+import freechips.rocketchip.subsystem._
 
 case class TLPrefetcherParams(
   prefetchIds: Int = 4,
@@ -23,7 +23,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
   val node = TLAdapterNode(
     clientFn = { cp =>
-      println(cp.clients)
       cp.v1copy(clients = (mapInputIds(cp.clients) zip cp.clients).map { case (range, c) => c.v1copy(
         sourceId = range
       )})
@@ -39,10 +38,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val nClients = edgeOut.master.clients.size
       val outIdMap = edgeOut.master.clients.map(_.sourceId)
       val inIdMap = edgeIn.master.clients.map(_.sourceId)
-
-      println(inIdMap)
-      println(outIdMap)
-
 
       val snoop = Wire(Valid(new Snoop))
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
@@ -121,5 +116,12 @@ object TLPrefetcher {
   def apply()(implicit p: Parameters) = {
     val prefetcher = LazyModule(new TLPrefetcher)
     prefetcher.node
+  }
+}
+
+case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
+  val where = base.where
+  def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
+    TLPrefetcher() := base.injectNode(context)(p)
   }
 }

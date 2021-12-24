@@ -31,8 +31,8 @@ class SingleNextLinePrefetcher(params: SingleNextLinePrefetcherParams)(implicit 
 
   val snoop_next_block = io.snoop.bits.block(5,0) + 1.U
 
-  when (state === s_idle) {
-    when (io.snoop.valid && (~io.snoop.bits.block(5,0) =/= 0.U)) {
+  when ((state === s_idle || (state === s_wait && !io.hit)) && io.snoop.valid) {
+    when (~io.snoop.bits.block(5,0) =/= 0.U) {
       state := (if (params.waitForHit) s_wait else s_active)
     }
     block_upper := io.snoop.bits.block >> 6
@@ -56,4 +56,29 @@ class SingleNextLinePrefetcher(params: SingleNextLinePrefetcherParams)(implicit 
     block_lower := io.snoop.bits.block
     prefetch := snoop_next_block
   }
+}
+
+
+case class MultiNextLinePrefetcherParams(
+  singles: Seq[SingleNextLinePrefetcherParams] = Seq.fill(4) { SingleNextLinePrefetcherParams() }
+) extends CanInstantiatePrefetcher {
+  def instantiate()(implicit p: Parameters) = Module(new MultiNextLinePrefetcher(this)(p))
+}
+
+class MultiNextLinePrefetcher(params: MultiNextLinePrefetcherParams)(implicit p: Parameters) extends AbstractPrefetcher()(p) {
+
+  val singles = params.singles.map(_.copy(waitForHit=true).instantiate())
+  val any_hit = singles.map(_.io.hit).reduce(_||_)
+  singles.foreach(_.io.snoop.valid := false.B)
+  singles.foreach(_.io.snoop.bits := io.snoop.bits)
+  val repl = RegInit(1.U(singles.size.W))
+  when (io.snoop.valid) {
+    repl := repl << 1 | repl(singles.size-1)
+    for (s <- 0 until singles.size) {
+      when (singles(s).io.hit || (!any_hit && repl(s))) { singles(s).io.snoop.valid := true.B }
+    }
+  }
+  val arb = Module(new RRArbiter(new Prefetch, singles.size))
+  arb.io.in <> singles.map(_.io.request)
+  io.request <> arb.io.out
 }
