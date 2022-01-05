@@ -1,11 +1,16 @@
 package pythia
 
 import freechips.rocketchip.config.{Config, Field, Parameters}
+import pythia._
 
-class WithSingleNLPrefetcher extends Config((site, here, up) => {
-  case TLPrefetcherKey => up(TLPrefetcherKey).copy(prefetcher=SingleNextLinePrefetcherParams())
+class WithTLDCachePrefetcher(p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams()) extends Config((site, here, up) => {
+  case TLPrefetcherKey => up(TLPrefetcherKey).copy(
+    prefetcher = (s: String) => if (s.contains("DCache") && !s.contains("MMIO")) Some(p) else up(TLPrefetcherKey).prefetcher(s)
+  )
 })
 
-class WithMultiNLPrefetcher extends Config((site, here, up) => {
-  case TLPrefetcherKey => up(TLPrefetcherKey).copy(prefetcher=MultiNextLinePrefetcherParams())
+class WithTLICachePrefetcher(p: CanInstantiatePrefetcher = SingleNextLinePrefetcherParams()) extends Config((site, here, up) => {
+  case TLPrefetcherKey => up(TLPrefetcherKey).copy(
+    prefetcher = (s: String) => if (s.contains("ICache")) Some(p) else up(TLPrefetcherKey).prefetcher(s)
+  )
 })

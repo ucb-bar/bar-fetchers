@@ -11,6 +11,7 @@ case class SingleNextLinePrefetcherParams(
   ahead: Int = 4,
   waitForHit: Boolean = false
 ) extends CanInstantiatePrefetcher {
+  def desc() = "Single Next-Line Prefetcher"
   def instantiate()(implicit p: Parameters) = Module(new SingleNextLinePrefetcher(this)(p))
 }
 
@@ -62,6 +63,7 @@ class SingleNextLinePrefetcher(params: SingleNextLinePrefetcherParams)(implicit 
 case class MultiNextLinePrefetcherParams(
   singles: Seq[SingleNextLinePrefetcherParams] = Seq.fill(4) { SingleNextLinePrefetcherParams() }
 ) extends CanInstantiatePrefetcher {
+  def desc() = "Multi Next-Line Prefetcher"
   def instantiate()(implicit p: Parameters) = Module(new MultiNextLinePrefetcher(this)(p))
 }
 

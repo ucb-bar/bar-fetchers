@@ -10,6 +10,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.subsystem.{CacheBlockBytes}
 
 trait CanInstantiatePrefetcher {
+  def desc: String
   def instantiate()(implicit p: Parameters): AbstractPrefetcher
 }
 
@@ -44,6 +45,11 @@ abstract class AbstractPrefetcher(implicit p: Parameters) extends Module {
   io.request.bits := DontCare
   io.request.bits.address := 0.U(1.W)
   io.hit := false.B
+}
+
+case class NullPrefetcherParams() extends CanInstantiatePrefetcher {
+  def desc() = "Null Prefetcher"
+  def instantiate()(implicit p: Parameters) = Module(new NullPrefetcher()(p))
 }
 
 class NullPrefetcher(implicit p: Parameters) extends AbstractPrefetcher()(p)

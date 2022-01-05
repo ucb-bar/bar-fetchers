@@ -11,7 +11,7 @@ import freechips.rocketchip.subsystem._
 
 case class TLPrefetcherParams(
   prefetchIds: Int = 4,
-  prefetcher: CanInstantiatePrefetcher = SingleNextLinePrefetcherParams()
+  prefetcher: String => Option[CanInstantiatePrefetcher] = _ => None
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
@@ -42,13 +42,16 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val snoop = Wire(Valid(new Snoop))
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
 
-      // Implement prefetchers per client. TODO: Support heterogenous prefetchers per client
-      val prefetchers = Seq.tabulate(nClients) { i =>
-        val prefetcher = params.prefetcher.instantiate()
+      // Implement prefetchers per client.
+      val prefetchers = edgeOut.master.clients.zipWithIndex.map { case (c,i) =>
+        val pParams = params.prefetcher(c.name).getOrElse(NullPrefetcherParams())
+        println(s"Prefetcher for ${c.name}: ${pParams.desc}")
+        val prefetcher = pParams.instantiate()
         prefetcher.io.snoop.valid := snoop.valid && snoop_client === i.U
         prefetcher.io.snoop.bits := snoop.bits
         prefetcher
       }
+
       val out_arb = Module(new RRArbiter(new Prefetch, nClients))
       out_arb.io.in <> prefetchers.map(_.io.request)
 
