@@ -1,7 +1,6 @@
-package pythia
+package prefetchers
 
 import freechips.rocketchip.config.{Config, Field, Parameters}
-import pythia._
 
 class WithTLDCachePrefetcher(p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams()) extends Config((site, here, up) => {
   case TLPrefetcherKey => up(TLPrefetcherKey).copy(
