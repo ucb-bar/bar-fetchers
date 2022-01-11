@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental.{IO}
 import freechips.rocketchip.config.{Config, Field, Parameters}
-import freechips.rocketchip.rocket.{HellaCache, HellaCacheModule}
+import freechips.rocketchip.rocket.{HellaCache, HellaCacheModule, HellaCacheArbiter, SimpleHellaCacheIF, HellaCacheIO}
 import freechips.rocketchip.rocket.constants.{MemoryOpConstants}
 import freechips.rocketchip.tile.{BaseTile}
 import freechips.rocketchip.subsystem.{CacheBlockBytes}
@@ -63,38 +63,38 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, outer: Hella
 
   val prefetcher = pP.instantiate()
 
-  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire(), 2) && !cache.io.cpu.s2_nack
-  prefetcher.io.snoop.bits.address := cache.io.cpu.s2_paddr
+  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire() && !core_prefetch, 2) && !io.cpu.s2_nack
+  prefetcher.io.snoop.bits.address := ShiftRegister(io.cpu.req.bits.addr, 2)
   prefetcher.io.snoop.bits.write := ShiftRegister(isWrite(io.cpu.req.bits.cmd), 2)
 
-  val legal_prefetch = cache.edge.manager.supportsHintFast(
-    prefetcher.io.request.bits.block_address,
-    log2Up(p(CacheBlockBytes)).U)
-  prefetcher.io.request.ready := !legal_prefetch
-
+  val req = Queue(prefetcher.io.request, 1)
+  val in_flight = RegInit(false.B)
+  req.ready := false.B
 
   when (!io.cpu.req.valid) {
-    cache.io.cpu.req.valid := prefetcher.io.request.valid && legal_prefetch
-    cache.io.cpu.req.bits.addr := prefetcher.io.request.bits.block_address
+    cache.io.cpu.req.valid := req.valid && !in_flight
+    cache.io.cpu.req.bits.addr := req.bits.block_address
     cache.io.cpu.req.bits.tag := 0.U
-    cache.io.cpu.req.bits.cmd := Mux(prefetcher.io.request.bits.write, M_PFW, M_PFR)
+    cache.io.cpu.req.bits.cmd := Mux(req.bits.write, M_PFW, M_PFR)
     cache.io.cpu.req.bits.size := 0.U
     cache.io.cpu.req.bits.signed := false.B
     cache.io.cpu.req.bits.dprv := DontCare
     cache.io.cpu.req.bits.data := DontCare
     cache.io.cpu.req.bits.mask := DontCare
-    cache.io.cpu.req.bits.phys := true.B
+    cache.io.cpu.req.bits.phys := false.B
     cache.io.cpu.req.bits.no_alloc := false.B
     cache.io.cpu.req.bits.no_xcpt := false.B
-    prefetcher.io.request.ready := cache.io.cpu.req.ready
+    req.ready := cache.io.cpu.req.ready && !in_flight
+    when (req.fire()) { in_flight := true.B }
   }
 
-  val legalFire = prefetcher.io.request.fire() && legal_prefetch
-  when (ShiftRegister(legalFire, 1)) {
+  when (ShiftRegister(req.fire(), 1)) {
     cache.io.cpu.s1_kill := false.B
   }
-  when (ShiftRegister(legalFire, 2)) {
+  when (ShiftRegister(req.fire(), 2)) {
     cache.io.cpu.s2_kill := false.B
+    req.ready := !io.cpu.s2_nack
+    in_flight := false.B
   }
   when (ShiftRegister(!io.cpu.req.valid, 2)) {
     io.cpu.s2_nack := false.B
