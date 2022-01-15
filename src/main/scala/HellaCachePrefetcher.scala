@@ -84,16 +84,16 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, outer: Hella
     cache.io.cpu.req.bits.phys := false.B
     cache.io.cpu.req.bits.no_alloc := false.B
     cache.io.cpu.req.bits.no_xcpt := false.B
-    req.ready := cache.io.cpu.req.ready && !in_flight
-    when (req.fire()) { in_flight := true.B }
+    when (cache.io.cpu.req.fire()) { in_flight := true.B }
   }
 
-  when (ShiftRegister(req.fire(), 1)) {
+  val prefetch_fire = cache.io.cpu.req.fire() && isPrefetch(cache.io.cpu.req.bits.cmd)
+  when (ShiftRegister(prefetch_fire, 1)) {
     cache.io.cpu.s1_kill := false.B
   }
-  when (ShiftRegister(req.fire(), 2)) {
+  when (ShiftRegister(prefetch_fire, 2)) {
     cache.io.cpu.s2_kill := false.B
-    req.ready := !io.cpu.s2_nack
+    req.ready := !cache.io.cpu.s2_nack
     in_flight := false.B
   }
   when (ShiftRegister(!io.cpu.req.valid, 2)) {
