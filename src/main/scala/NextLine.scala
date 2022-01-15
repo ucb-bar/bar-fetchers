@@ -88,6 +88,9 @@ class SingleNextLinePrefetcher(params: SingleNextLinePrefetcherParams)(implicit 
     write := io.snoop.bits.write
     block_lower := io.snoop.bits.block
     block_upper := io.snoop.bits.block >> lowerBits
+    when (io.snoop.bits.block(lowerBits-1,0) === prefetch) {
+      prefetch := prefetch + 1.U
+    }
     when (wrap && ((io.snoop.bits.block >> lowerBits) =/= block_upper)) {
       wrap := false.B
     }
