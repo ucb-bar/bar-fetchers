@@ -53,7 +53,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       }
 
       val out_arb = Module(new RRArbiter(new Prefetch, nClients))
-      out_arb.io.in <> prefetchers.map(_.io.request)
+      out_arb.io.in <> prefetchers.map(_.io.request) //arbitrates between prefetchers?
 
       val tracker = RegInit(0.U(params.prefetchIds.W))
       val next_tracker = PriorityEncoder(~tracker)
@@ -96,6 +96,14 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       snoop.bits.write := put || (acq && toT)
       snoop_client := inIdToClientId(in.a.bits.source)
 
+      //printf("will this work?")
+      //println("Hi this was reached")
+
+      when (in.a.valid) {
+        val snoopAddrPrint = snoop.bits.address
+        printf(p"Snoop Addr: 0x${Hexadecimal(snoopAddrPrint)}" +"\n")
+      }
+
       val (legal, hint) = edgeOut.Hint(
         prefetchIdToOutId(next_tracker, out_arb.io.chosen),
         out_arb.io.out.bits.block_address,
@@ -107,6 +115,10 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         out.a.valid := out_arb.io.out.valid && tracker_free && legal
         out.a.bits := hint
         out_arb.io.out.ready := out.a.ready
+        val prefetchAddrPrint = out.a.bits.address
+        when (out.a.valid) {
+          printf(p"Prefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
+        }
       }
       when (!legal) {
         out_arb.io.out.ready := true.B
