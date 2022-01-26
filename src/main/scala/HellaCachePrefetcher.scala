@@ -63,7 +63,7 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, outer: Hella
 
   val prefetcher = pP.instantiate()
 
-  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire() && !core_prefetch, 2) && !io.cpu.s2_nack
+  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire() && !core_prefetch, 2) && !io.cpu.s2_nack && !RegNext(io.cpu.s1_kill)
   prefetcher.io.snoop.bits.address := ShiftRegister(io.cpu.req.bits.addr, 2)
   prefetcher.io.snoop.bits.write := ShiftRegister(isWrite(io.cpu.req.bits.cmd), 2)
 
