@@ -59,6 +59,8 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val next_tracker = PriorityEncoder(~tracker)
       val tracker_free = !tracker(next_tracker)
 
+      val cycle_counter = RegInit(0.U(32.W))
+
       def inIdAdjuster(source: UInt) = Mux1H((inIdMap zip outIdMap).map { case (i,o) =>
         i.contains(source) -> (o.start.U | (source - i.start.U))
       })
@@ -99,9 +101,23 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       //printf("will this work?")
       //println("Hi this was reached")
 
+      //Add cycle counter
+      cycle_counter := cycle_counter + 1.U
+
       when (in.a.valid) {
         val snoopAddrPrint = snoop.bits.address
-        printf(p"Snoop Addr: 0x${Hexadecimal(snoopAddrPrint)}" +"\n")
+        val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
+        printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoop Addr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoop tx ID: ${Decimal(snoopTxId)}\n")
+      }
+
+      //Print d channel response + ID + cycles
+      //ID: source
+      //Response: valid
+      // cycles tell hit or miss
+      // Response coming back from L2
+      when (out.d.valid) {
+        val dResponseID = out.d.bits.source
+        printf(p"Cycle: ${Decimal(cycle_counter)}\tResponse ID: ${Decimal(dResponseID)}\n")
       }
 
       val (legal, hint) = edgeOut.Hint(
@@ -117,7 +133,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         out_arb.io.out.ready := out.a.ready
         val prefetchAddrPrint = out.a.bits.address
         when (out.a.valid) {
-          printf(p"Prefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
+          printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
         }
       }
       when (!legal) {
