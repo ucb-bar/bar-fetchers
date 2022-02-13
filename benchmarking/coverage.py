@@ -1,9 +1,12 @@
+import sys
+
 def main():
     #TODO: make parameterizable, write bash script to run configs automatically
-    with open('prefetch_vvadd.out') as f:
+
+    with open(sys.argv[1]) as f:
         prefetch_lines = f.readlines()
 
-    with open('vvadd.out') as f:
+    with open(sys.argv[2]) as f:
         no_prefetch_lines = f.readlines()
 
     misses_prevented = 0
@@ -19,12 +22,19 @@ def main():
     print(len(with_prefetch_hits))
     print(len(no_prefetch_misses))
     print(len(with_prefetch_misses))
-    for addr in with_prefetch_hits:
-        if not addr in no_prefetch_hits:
-            print(addr)
+
+    prefetch_hits_only = list(with_prefetch_hits)
+    no_prefetch_misses_only = list(no_prefetch_misses)
+
+    for addr in no_prefetch_hits:
+        if addr in prefetch_hits_only:
+            prefetch_hits_only.remove(addr) #get only new hits, blind to duplicates
+    for addr in with_prefetch_misses:
+        if addr in no_prefetch_misses:
+            no_prefetch_misses_only.remove(addr)
     #print(no_prefetch_misses)
     #print(with_prefetch_misses)
-
+    #print(prefetch_hits_only)
 
 
     # for miss in no_prefetch_misses['misses']:
@@ -41,11 +51,8 @@ def main():
         if "Snoop" in line:
             snoop = line.split()
             addr = snoop[4]
-            # TODO: account for the same address being accessed more than once
-            # Look at L2
-            # Bucket same accesses seperately, separate ambiguous misses prevented from clear misses prevented
-                # just handle ambiguous seperately using L2
-            if (addr in prefetch_queue) and (addr in no_prefetch_misses) and (addr in with_prefetch_hits):
+            if (addr in prefetch_queue) and (addr in no_prefetch_misses_only) and (addr in prefetch_hits_only):
+                no_prefetch_misses_only.remove(addr) # make sure miss isn't counted twice
                 misses_prevented += 1
 
     print("misses prevented: " + str(misses_prevented))
