@@ -18,9 +18,3 @@ class WithTLICachePrefetcher(p: CanInstantiatePrefetcher = SingleNextLinePrefetc
 class WithHellaCachePrefetcher(hartIds: Seq[Int], p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams(handleVA=true)) extends Config((site, here, up) => {
   case BuildHellaCache => HellaCachePrefetchWrapperFactory.apply(hartIds, p, up(BuildHellaCache))
 })
-
-class WithPassthroughPrefetcher(p: CanInstantiatePrefetcher = PassthroughPrefetcherParams()) extends Config((site, here, up) => {
-  case TLPrefetcherKey => up(TLPrefetcherKey).copy(
-    prefetcher = (s: String) => if (s.contains("DCache") && !s.contains("MMIO")) Some(p) else up(TLPrefetcherKey).prefetcher(s)
-  )
-})
