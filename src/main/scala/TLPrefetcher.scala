@@ -53,13 +53,11 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       }
 
       val out_arb = Module(new RRArbiter(new Prefetch, nClients))
-      out_arb.io.in <> prefetchers.map(_.io.request) //arbitrates between prefetchers?
+      out_arb.io.in <> prefetchers.map(_.io.request)
 
       val tracker = RegInit(0.U(params.prefetchIds.W))
       val next_tracker = PriorityEncoder(~tracker)
       val tracker_free = !tracker(next_tracker)
-
-      val cycle_counter = RegInit(0.U(32.W))
 
       def inIdAdjuster(source: UInt) = Mux1H((inIdMap zip outIdMap).map { case (i,o) =>
         i.contains(source) -> (o.start.U | (source - i.start.U))
@@ -98,28 +96,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       snoop.bits.write := put || (acq && toT)
       snoop_client := inIdToClientId(in.a.bits.source)
 
-      //printf("will this work?")
-      //println("Hi this was reached")
-
-      //Add cycle counter
-      cycle_counter := cycle_counter + 1.U
-
-      when (in.a.valid) {
-        val snoopAddrPrint = snoop.bits.address
-        val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
-        printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoop Addr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoop tx ID: ${Decimal(snoopTxId)}\n")
-      }
-
-      //Print d channel response + ID + cycles
-      //ID: source
-      //Response: valid
-      // cycles tell hit or miss
-      // Response coming back from L2
-      when (out.d.valid) {
-        val dResponseID = out.d.bits.source
-        printf(p"Cycle: ${Decimal(cycle_counter)}\tResponse ID: ${Decimal(dResponseID)}\n")
-      }
-
       val (legal, hint) = edgeOut.Hint(
         prefetchIdToOutId(next_tracker, out_arb.io.chosen),
         out_arb.io.out.bits.block_address,
@@ -131,10 +107,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         out.a.valid := out_arb.io.out.valid && tracker_free && legal
         out.a.bits := hint
         out_arb.io.out.ready := out.a.ready
-        val prefetchAddrPrint = out.a.bits.address
-        when (out.a.valid) {
-          printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
-        }
       }
       when (!legal) {
         out_arb.io.out.ready := true.B
