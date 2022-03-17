@@ -96,6 +96,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       snoop.bits.write := put || (acq && toT)
       snoop_client := inIdToClientId(in.a.bits.source)
 
+      val legal_address = edgeOut.manager.findSafe(out_arb.io.out.bits.block_address).reduce(_||_)
       val (legal, hint) = edgeOut.Hint(
         prefetchIdToOutId(next_tracker, out_arb.io.chosen),
         out_arb.io.out.bits.block_address,
@@ -104,11 +105,11 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       )
       out_arb.io.out.ready := false.B
       when (!in.a.valid) {
-        out.a.valid := out_arb.io.out.valid && tracker_free && legal
+        out.a.valid := out_arb.io.out.valid && tracker_free && legal && legal_address
         out.a.bits := hint
         out_arb.io.out.ready := out.a.ready
       }
-      when (!legal) {
+      when (!legal || !legal_address) {
         out_arb.io.out.ready := true.B
       }
     }
