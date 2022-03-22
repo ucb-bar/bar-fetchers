@@ -1,10 +1,16 @@
 import sys
+import argparse
 
 def main():
-    with open(sys.argv[1]) as f:
+    parser = argparse.ArgumentParser(description="Specify input files")
+    parser.add_argument('prefetch_file', type=str, help='input file for the prefetch config')
+    parser.add_argument('no_prefetch_file', type=str, help='input file for the non-prefetch config')
+    args = parser.parse_args()
+
+    with open(args.prefetch_file) as f:
         prefetch_lines = f.readlines()
 
-    with open(sys.argv[2]) as f:
+    with open(args.no_prefetch_file) as f:
         no_prefetch_lines = f.readlines()
 
     misses_prevented = 0
@@ -34,19 +40,20 @@ def main():
     num_prefetches_accessed = 0
 
     for line in prefetch_lines:
-        if "Prefetch Addr" in line:
+        if "PrefetchAddr" in line:
+            # Line format: Cycle: decimal_int PrefetchAddr: hexadecimal_int
             pref = line.split()
-            prefetches_sent.append(pref[4]) #add new prefetch address
-        elif "Prefetch Resp" in line:
+            prefetches_sent.append(pref[3]) #add new prefetch address
+        elif "PrefetchResp" in line:
             pref_resp = line.split()
-            pref_resp_addr = pref_resp[5]
+            pref_resp_addr = pref_resp[3]
             pref_resp_cycles = int(pref_resp[1])
             if pref_resp_addr in prefetches_sent:
                 prefetch_queue[pref_resp_addr] = pref_resp_cycles #only interested in most recent response timing
                 num_prefetch_resps += 1
         elif "Snoop" in line:
             snoop = line.split()
-            addr = snoop[4]
+            addr = snoop[5] #get block address
             cycles = int(snoop[1])
             if (addr in prefetch_queue):
                 delta_sum += (cycles - prefetch_queue[addr])
@@ -64,13 +71,13 @@ def main():
 
     print("misses prevented: " + str(misses_prevented))
 
-    coverage = (misses_prevented + 0.0) / (misses_prevented + len(with_prefetch_misses)) * 100
+    coverage = float(misses_prevented) / (misses_prevented + len(with_prefetch_misses)) * 100
     print("coverage: " + str(coverage) + "%")
 
-    accuracy = (misses_prevented + 0.0) / (useless_prefetches + misses_prevented) * 100
+    accuracy = float(misses_prevented) / (useless_prefetches + misses_prevented) * 100
     print("accuracy: " + str(accuracy) + "%")
 
-    timeliness = (delta_sum + 0.0) / num_prefetches_accessed
+    timeliness = float(delta_sum) / num_prefetches_accessed
     print("timeliness: " + str(timeliness) + " cycles")
 
 
@@ -83,24 +90,27 @@ def classify_accesses(lines):
     for line in lines:
         if 'Snoop' in line:
             snoop = line.split()
-            snoop_cycles = snoop[1]
-            addr = snoop[4]
-            snoops[addr] = snoop_cycles
+            snoop_cycles = int(snoop[1])
+            addr = snoop[3]
+            snoop_block = snoop[5]
+            #use absolute addr in case of backlogged accesses to same block
+            snoops[addr] = (snoop_cycles, snoop_block)
             all_addr.append(addr)
         elif 'Resp' in line:
             #check against snoops
             resp = line.split()
-            resp_cycles = resp[1]
-            resp_addr = resp[4]
+            resp_cycles = int(resp[1])
+            resp_addr = resp[3]
             if (resp_addr in snoops): 
-                if (((int(resp_cycles) - int(snoops[resp_addr])) >= 5) and (int(resp_cycles) - int(last_resp_cycle) > 3)):
-                    accesses["misses"].append(resp_addr) #add snoop addr to misses
+                if ((resp_cycles - snoops[resp_addr][0] >= 5) and (resp_cycles - last_resp_cycle > 3)):
+                    accesses["misses"].append(snoops[resp_addr][1]) #add snoop block addr to misses
                 else:
-                    accesses["hits"].append(resp_addr)
+                    accesses["hits"].append(snoops[resp_addr][1])
                 snoops.pop(resp_addr)
-                last_resp_cycle = resp[1]
+                last_resp_cycle = int(resp[1])
     return accesses
 
 
 
-main()
+if __name__ == "__main__":
+  main()
