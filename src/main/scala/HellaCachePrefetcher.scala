@@ -106,7 +106,7 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetc
 
     //print response
     when (cache.io.cpu.resp.valid && !isPrefetch(cache.io.cpu.resp.bits.cmd)) {
-      printf(p"Cycle: ${Decimal(cycle_counter)}\tRespAddr: ${Hexadecimal(cache.io.cpu.resp.bits.addr)}\n")
+      printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopRespAddr: ${Hexadecimal(cache.io.cpu.resp.bits.addr)}\n")
     }
 
     //print prefetch response

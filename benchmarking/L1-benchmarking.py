@@ -1,5 +1,20 @@
 import sys
 import argparse
+import re
+
+"""
+Lines formatting:
+Cycle: decimal_int  SnoopAddr: hexadecimal_int  SnoopBlockAddr: hexadecimal_int
+Cycle: decimal_int  SnoopRespAddr: hexadecimal_int
+Cycle: decimal_int  PrefetchAddr: hexadecimal_int
+Cycle: decimal_int  PrefetchRespAddr: hexadecimal_int
+
+"""
+snoop_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(SnoopAddr:)(\s)*(\d|[abcdef])*(\s)*(SnoopBlock:)(\s)*(\d|[abcdef])*(\s)*")
+resp_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(SnoopRespAddr:)(\s)*(\d|[abcdef])*(\s)*")
+prefetch_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(PrefetchAddr:)(\s)*(\d|[abcdef])*(\s)*")
+prefetch_resp_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(PrefetchRespAddr:)(\s)*(\d|[abcdef])*(\s)*")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Specify input files")
@@ -9,10 +24,9 @@ def main():
 
     with open(args.prefetch_file) as f:
         prefetch_lines = f.readlines()
-
     with open(args.no_prefetch_file) as f:
         no_prefetch_lines = f.readlines()
-
+    
     misses_prevented = 0
     prefetch_queue={}
     prefetches_sent=[]
@@ -23,6 +37,9 @@ def main():
     with_prefetch = classify_accesses(prefetch_lines)
     with_prefetch_hits = with_prefetch['hits']
     with_prefetch_misses = with_prefetch['misses']
+
+    print("Misses without prefetcher: " + str(len(no_prefetch_misses)))
+    print("Misses with prefetcher: " + str(len(with_prefetch_misses)))
 
     prefetch_hits_only = list(with_prefetch_hits)
     no_prefetch_misses_only = list(no_prefetch_misses)
@@ -36,24 +53,26 @@ def main():
 
     useful_prefetches=[] #prefetches that actually prevent a miss
     num_prefetch_resps = 0
+    num_unique_prefetch_resps = 0
     delta_sum = 0
     num_prefetches_accessed = 0
 
     for line in prefetch_lines:
-        if "PrefetchAddr" in line:
-            # Line format: Cycle: decimal_int PrefetchAddr: hexadecimal_int
+        if prefetch_regex.match(line):
             pref = line.split()
-            prefetches_sent.append(pref[3]) #add new prefetch address
-        elif "PrefetchResp" in line:
+            prefetches_sent.append(int(pref[3], 16)) #add new prefetch address
+        elif prefetch_resp_regex.match(line):
             pref_resp = line.split()
-            pref_resp_addr = pref_resp[3]
+            pref_resp_addr = int(pref_resp[3], 16)
             pref_resp_cycles = int(pref_resp[1])
             if pref_resp_addr in prefetches_sent:
+                if (pref_resp_addr not in prefetch_queue):
+                    num_unique_prefetch_resps += 1
                 prefetch_queue[pref_resp_addr] = pref_resp_cycles #only interested in most recent response timing
                 num_prefetch_resps += 1
-        elif "Snoop" in line:
+        elif snoop_regex.match(line):
             snoop = line.split()
-            addr = snoop[5] #get block address
+            addr = int(snoop[5], 16) #get block address
             cycles = int(snoop[1])
             if (addr in prefetch_queue):
                 delta_sum += (cycles - prefetch_queue[addr])
@@ -62,7 +81,7 @@ def main():
                     no_prefetch_misses_only.remove(addr) # make sure miss isn't counted twice
                     prefetch_hits_only.remove(addr)
                     misses_prevented += 1
-                    useful_prefetches.append(addr)
+                    useful_prefetches.append(snoop[5])
     
     #Accuracy Calculations
     num_no_resp_prefetches=len(prefetches_sent)-num_prefetch_resps
@@ -70,16 +89,17 @@ def main():
     useless_prefetches = num_no_resp_prefetches + num_unused_prefetches
 
     print("misses prevented: " + str(misses_prevented))
-
     coverage = float(misses_prevented) / (misses_prevented + len(with_prefetch_misses)) * 100
     print("coverage: " + str(coverage) + "%")
-
-    accuracy = float(misses_prevented) / (useless_prefetches + misses_prevented) * 100
-    print("accuracy: " + str(accuracy) + "%")
-
-    timeliness = float(delta_sum) / num_prefetches_accessed
-    print("timeliness: " + str(timeliness) + " cycles")
-
+    # Split into acknowledged and sent prefetches
+    accuracy_all = float(misses_prevented) / (useless_prefetches + misses_prevented) * 100
+    print("accuracy: " + str(accuracy_all) + "%")
+    #TODO: must not count duplicates
+    accuracy_resp = float(misses_prevented) / (num_unique_prefetch_resps-len(useful_prefetches) + misses_prevented) * 100
+    print("accuracy (acknowledged): " + str(accuracy_resp) + "%")
+    if (num_prefetches_accessed != 0):
+        timeliness = (delta_sum + 0.0) / num_prefetches_accessed
+        print("timeliness: " + str(timeliness) + " cycles")
 
 
 def classify_accesses(lines):
@@ -88,15 +108,15 @@ def classify_accesses(lines):
     accesses = {"hits": [], "misses": []}
     last_resp_cycle = 0
     for line in lines:
-        if 'Snoop' in line:
+        if snoop_regex.match(line):
             snoop = line.split()
             snoop_cycles = int(snoop[1])
             addr = snoop[3]
-            snoop_block = snoop[5]
+            snoop_block = int(snoop[5], 16)
             #use absolute addr in case of backlogged accesses to same block
             snoops[addr] = (snoop_cycles, snoop_block)
             all_addr.append(addr)
-        elif 'Resp' in line:
+        elif resp_regex.match(line):
             #check against snoops
             resp = line.split()
             resp_cycles = int(resp[1])
@@ -109,7 +129,6 @@ def classify_accesses(lines):
                 snoops.pop(resp_addr)
                 last_resp_cycle = int(resp[1])
     return accesses
-
 
 
 if __name__ == "__main__":
