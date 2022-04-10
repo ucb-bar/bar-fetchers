@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import sys
 import argparse
 import re
@@ -8,12 +10,12 @@ Cycle: decimal_int  SnoopAddr: hexadecimal_int  SnoopBlockAddr: hexadecimal_int
 Cycle: decimal_int  SnoopRespAddr: hexadecimal_int
 Cycle: decimal_int  PrefetchAddr: hexadecimal_int
 Cycle: decimal_int  PrefetchRespAddr: hexadecimal_int
-
 """
-snoop_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(SnoopAddr:)(\s)*(\d|[abcdef])*(\s)*(SnoopBlock:)(\s)*(\d|[abcdef])*(\s)*")
-resp_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(SnoopRespAddr:)(\s)*(\d|[abcdef])*(\s)*")
-prefetch_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(PrefetchAddr:)(\s)*(\d|[abcdef])*(\s)*")
-prefetch_resp_regex = re.compile("(Cycle:)(\s)*(\d)*(\s)*(PrefetchRespAddr:)(\s)*(\d|[abcdef])*(\s)*")
+
+snoop_regex = re.compile("^Cycle:\s*(\d+)\s*SnoopAddr:\s*([\da-f]+)\s*SnoopBlock:\s*([\da-f]+)\s*")
+resp_regex = re.compile("^Cycle:\s*(\d+)\s*SnoopRespAddr:\s*([\da-f]+)\s*")
+prefetch_regex = re.compile("^Cycle:\s*(\d)*\s*PrefetchAddr:\s*([\da-f]+)\s*")
+prefetch_resp_regex = re.compile("^Cycle:\s*(\d+)*\s*PrefetchRespAddr:\s*([\da-f]+)\s*")
 
 
 def main():
@@ -58,22 +60,22 @@ def main():
     num_prefetches_accessed = 0
 
     for line in prefetch_lines:
-        if prefetch_regex.match(line):
-            pref = line.split()
-            prefetches_sent.append(int(pref[3], 16)) #add new prefetch address
-        elif prefetch_resp_regex.match(line):
-            pref_resp = line.split()
-            pref_resp_addr = int(pref_resp[3], 16)
-            pref_resp_cycles = int(pref_resp[1])
+        pref = prefetch_regex.match(line)
+        pref_resp = prefetch_resp_regex.match(line)
+        snoop = snoop_regex.match(line)
+        if pref:
+            prefetches_sent.append(int(pref.group(2), 16)) #add new prefetch address
+        elif pref_resp:
+            pref_resp_addr = int(pref_resp.group(2), 16)
+            pref_resp_cycles = int(pref_resp.group(1))
             if pref_resp_addr in prefetches_sent:
                 if (pref_resp_addr not in prefetch_queue):
                     num_unique_prefetch_resps += 1
                 prefetch_queue[pref_resp_addr] = pref_resp_cycles #only interested in most recent response timing
                 num_prefetch_resps += 1
-        elif snoop_regex.match(line):
-            snoop = line.split()
-            addr = int(snoop[5], 16) #get block address
-            cycles = int(snoop[1])
+        elif snoop:
+            addr = int(snoop.group(3), 16) #get block address
+            cycles = int(snoop.group(1))
             if (addr in prefetch_queue):
                 delta_sum += (cycles - prefetch_queue[addr])
                 num_prefetches_accessed += 1
@@ -81,7 +83,7 @@ def main():
                     no_prefetch_misses_only.remove(addr) # make sure miss isn't counted twice
                     prefetch_hits_only.remove(addr)
                     misses_prevented += 1
-                    useful_prefetches.append(snoop[5])
+                    useful_prefetches.append(snoop.group(3))
     
     #Accuracy Calculations
     num_no_resp_prefetches=len(prefetches_sent)-num_prefetch_resps
@@ -108,26 +110,26 @@ def classify_accesses(lines):
     accesses = {"hits": [], "misses": []}
     last_resp_cycle = 0
     for line in lines:
-        if snoop_regex.match(line):
-            snoop = line.split()
-            snoop_cycles = int(snoop[1])
-            addr = snoop[3]
-            snoop_block = int(snoop[5], 16)
+        resp = resp_regex.match(line)
+        snoop = snoop_regex.match(line)
+        if snoop:
+            snoop_cycles = int(snoop.group(1))
+            addr = snoop.group(2)
+            snoop_block = int(snoop.group(3), 16)
             #use absolute addr in case of backlogged accesses to same block
             snoops[addr] = (snoop_cycles, snoop_block)
             all_addr.append(addr)
-        elif resp_regex.match(line):
+        elif resp:
             #check against snoops
-            resp = line.split()
-            resp_cycles = int(resp[1])
-            resp_addr = resp[3]
+            resp_cycles = int(resp.group(1))
+            resp_addr = resp.group(2)
             if (resp_addr in snoops): 
                 if ((resp_cycles - snoops[resp_addr][0] >= 5) and (resp_cycles - last_resp_cycle > 3)):
                     accesses["misses"].append(snoops[resp_addr][1]) #add snoop block addr to misses
                 else:
                     accesses["hits"].append(snoops[resp_addr][1])
                 snoops.pop(resp_addr)
-                last_resp_cycle = int(resp[1])
+                last_resp_cycle = int(resp.group(1))
     return accesses
 
 
