@@ -121,6 +121,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         printf(p"Cycle: ${Decimal(cycle_counter)}\tRespID: ${Decimal(dResponseID)}\n")
       }
 
+      val legal_address = edgeOut.manager.findSafe(out_arb.io.out.bits.block_address).reduce(_||_)
       val (legal, hint) = edgeOut.Hint(
         prefetchIdToOutId(next_tracker, out_arb.io.chosen),
         out_arb.io.out.bits.block_address,
@@ -129,7 +130,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       )
       out_arb.io.out.ready := false.B
       when (!in.a.valid) {
-        out.a.valid := out_arb.io.out.valid && tracker_free && legal
+        out.a.valid := out_arb.io.out.valid && tracker_free && legal && legal_address
         out.a.bits := hint
         out_arb.io.out.ready := out.a.ready
         val prefetchAddrPrint = out.a.bits.address
@@ -137,7 +138,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
           //printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
         }
       }
-      when (!legal) {
+      when (!legal || !legal_address) {
         out_arb.io.out.ready := true.B
       }
     }
@@ -154,6 +155,6 @@ object TLPrefetcher {
 case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
   val where = base.where
   def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
-    TLPrefetcher() := base.injectNode(context)(p)
+    TLPrefetcher() :*=* base.injectNode(context)(p)
   }
 }

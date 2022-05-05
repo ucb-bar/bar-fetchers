@@ -4,11 +4,11 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental.{IO}
 import freechips.rocketchip.config.{Config, Field, Parameters}
-import freechips.rocketchip.rocket.{HellaCache, HellaCacheModule, HellaCacheArbiter, SimpleHellaCacheIF, HellaCacheIO}
+import freechips.rocketchip.rocket._
 import freechips.rocketchip.rocket.constants.{MemoryOpConstants}
 import freechips.rocketchip.tile.{BaseTile}
 import freechips.rocketchip.subsystem.{CacheBlockBytes}
-import freechips.rocketchip.diplomacy.{LazyModule}
+import freechips.rocketchip.diplomacy._
 
 object HellaCachePrefetchWrapperFactory {
   def apply(hartIds: Seq[Int], prefetcher: CanInstantiatePrefetcher, printPrefetchingStats: Boolean, base: BaseTile => Parameters => HellaCache) = (tile: BaseTile) => (p: Parameters) => {
@@ -120,7 +120,13 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetc
     cache.io.cpu.s1_kill := false.B
   }
   when (ShiftRegister(prefetch_fire, 2)) {
-    cache.io.cpu.s2_kill := false.B
+    // HellaCache ignores DTLB prefetchable signal, so we recompute it here,
+    // and kill the request in s2 if not prefetchable
+    val paddr = cache.io.cpu.s2_paddr
+    val legal = cache.edge.manager.findSafe(paddr).reduce(_||_)
+    val prefetchable = cache.edge.manager.fastProperty(paddr, _.supportsAcquireT,
+      (b: TransferSizes) => (!b.none).B)
+    cache.io.cpu.s2_kill := !legal || !prefetchable
     req.ready := !cache.io.cpu.s2_nack
     in_flight := false.B
   }
