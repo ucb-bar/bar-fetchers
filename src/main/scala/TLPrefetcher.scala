@@ -126,6 +126,6 @@ object TLPrefetcher {
 case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
   val where = base.where
   def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
-    TLPrefetcher() := base.injectNode(context)(p)
+    TLPrefetcher() :*=* base.injectNode(context)(p)
   }
 }
