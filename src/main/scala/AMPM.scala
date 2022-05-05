@@ -100,7 +100,7 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     shifty := params.N.U - snoop_offset - 1.U
     forward_map_reverse_broken := prefetch_input << (shifty)
     forward_map := Reverse(forward_map_reverse_broken)
-    backward_map := prefetch_input >> snoop_offset
+    backward_map := prefetch_input >> snoop_offset //should be unsigned
 
     for (k <- 0 until max_k) {
       logic_pos(k) := forward_map(k) & (forward_map(2*k) | forward_map((2*k)+1))
