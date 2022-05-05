@@ -101,10 +101,14 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       //Add cycle counter
       cycle_counter := cycle_counter + 1.U
 
-      when (in.a.valid) {
-        val snoopAddrPrint = snoop.bits.address
+      when (out.a.valid) {
+        val snoopAddrPrint = out.a.bits.address
         val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
-        printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoop Addr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoop tx ID: ${Decimal(snoopTxId)}\n")
+        when (out.a.bits.opcode === TLMessages.Hint) {
+          printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(snoopTxId)}\n")
+        } .otherwise {
+          printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n")
+        }
       }
 
       //Print d channel response + ID + cycles
@@ -114,7 +118,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       // Response coming back from L2
       when (out.d.valid) {
         val dResponseID = out.d.bits.source
-        printf(p"Cycle: ${Decimal(cycle_counter)}\tResponse ID: ${Decimal(dResponseID)}\n")
+        printf(p"Cycle: ${Decimal(cycle_counter)}\tRespID: ${Decimal(dResponseID)}\n")
       }
 
       val (legal, hint) = edgeOut.Hint(
@@ -130,7 +134,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
         out_arb.io.out.ready := out.a.ready
         val prefetchAddrPrint = out.a.bits.address
         when (out.a.valid) {
-          printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
+          //printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetch addr: 0x${Hexadecimal(prefetchAddrPrint)}" + "\n")
         }
       }
       when (!legal) {
