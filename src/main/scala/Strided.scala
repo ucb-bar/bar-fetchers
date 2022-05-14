@@ -27,7 +27,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
   val prefetch = Reg(UInt())
   val delta = Reg(UInt())
   val last_delta = Reg(UInt())
-  val history_cnt = Reg(UInt(historyWidth.W))
+  val history_cnt = RegInit(0.U(historyWidth.W))
   val last_snoop = Reg(UInt())
   val last_write = Reg(Bool())
   val delta_pos = Reg(Bool())

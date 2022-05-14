@@ -11,9 +11,9 @@ import freechips.rocketchip.subsystem.{CacheBlockBytes}
 
 case class SingleAMPMPrefetcherParams(
   //config given in paper: 256 entries, N=64, ways=8
-  entries: Int = 32,
-  N: Int = 8, //Number of cache lines per zone
-  ways: Int = 4
+  entries: Int = 8,
+  N: Int = 16, //Number of cache lines per zone
+  ways: Int = 1
 ) extends CanInstantiatePrefetcher {
   def desc() = "Single AMPM Prefetcher"
   def instantiate()(implicit p: Parameters) = Module(new AMPMPrefetcher(this)(p))
@@ -21,7 +21,7 @@ case class SingleAMPMPrefetcherParams(
 
 class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters) extends AbstractPrefetcher()(p) {
     //reges
-    val entries_per_way = params.entries >> params.ways
+    val entries_per_way = params.entries / params.ways
     val line_bits = log2Ceil(params.N)
     val way_bits = log2Ceil(params.ways)
     val max_k = if (params.N % 2 == 0) { params.N / 2 } else { (params.N - 1) / 2}
@@ -32,39 +32,48 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     
     //memory access map table
     //shift out bank as well
-    val snoop_tag = io.snoop.bits.block >> (line_bits + way_bits)
+    val snoop_tag = io.snoop.bits.block >> (line_bits)// + way_bits)
     //TODO: shift by line bits before indexing
-    val snoop_bank = (io.snoop.bits.block >> line_bits)(way_bits - 1, 0)
+    //val snoop_bank = (io.snoop.bits.block >> line_bits)(way_bits - 1, 0)
     val snoop_offset = io.snoop.bits.block(line_bits - 1, 0)
     // stores memory access banks
-    val memory_access_map_table = Reg(Vec(params.ways, Valid(new MemoryAccessMapBank(entries_per_way = entries_per_way, N = params.N))))
-    val tag_candidate = Wire(Vec(params.ways, UInt(params.N.W)))
+    //val memory_access_map_table = Reg(Vec(params.ways, Valid(new MemoryAccessMapBank(entries_per_way = entries_per_way, N = params.N))))
+    val memory_access_map_table = Reg(Valid(new MemoryAccessMapBank(entries_per_way = entries_per_way, N = params.N)))
+    val tag_candidate = Wire(UInt(params.N.W))
     val prefetch_input = Wire(UInt(params.N.W))
     val entry_existence_vec = Wire(Vec(params.ways * entries_per_way, Bool()))
     val entry_existence = Wire(Bool())
     val initial_state_vec = Wire(Vec(params.N, Bool())) 
-    val head = RegInit(VecInit(Seq.fill(params.ways)(0.U((entries_per_way - 1).W))))
+    val head = RegInit(0.U((entries_per_way - 1).W)) //RegInit(VecInit(Seq.fill(params.ways)(0.U((entries_per_way - 1).W))))
+    val already_accessed = Wire(Bool())
 
     for (i <- 0 until params.N) {
       initial_state_vec(i) := snoop_offset === i.U
     }
     //parallelize
-    for (i <- 0 until params.ways) {
-      tag_candidate(i) := 0.U
-      val map_bank = memory_access_map_table(i)
+    //for (i <- 0 until params.ways) {
+    //  tag_candidate(i) := 0.U
+      //already_accessed := false.B
+      tag_candidate := 0.U
+      val map_bank = memory_access_map_table
       for (j <- 0 until entries_per_way) {
         val map = map_bank.bits.maps(j)
         when (io.snoop.valid && map.valid && (map.bits.tag === snoop_tag)) {
           //found entry -> send to prefetch generator
-          tag_candidate(i) := map.bits.states.asUInt
+          //tag_candidate(i) := map.bits.states.asUInt
+          tag_candidate := map.bits.states.asUInt
           //Set to access only if this is the correct bank
-          when (snoop_bank === i.U) {
+          //when (snoop_bank === i.U) {
             map.bits.states(snoop_offset) := true.B
-          }
+          //}
+          entry_existence_vec(j) := true.B
+        } .otherwise {
+          entry_existence_vec(j) := false.B
         }
-        entry_existence_vec(i*entries_per_way + j) := io.snoop.valid && map.valid && (map.bits.tag === snoop_tag) && snoop_bank === i.U
+        //entry_existence_vec(i*entries_per_way + j) := io.snoop.valid && map.valid && (map.bits.tag === snoop_tag) && snoop_bank === i.U
+        
       }
-    }
+    //}
     //iirc this should be synthesizable
     //mux might be better code writing, should be okay
     /*for (i <- 0 until (params.ways * entries_per_way) - 1) {
@@ -74,13 +83,18 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     entry_existence := entry_existence_vec.reduce(_ || _)
     //if entry not in table, add new entry
     when (!entry_existence && io.snoop.valid) {
-      memory_access_map_table(snoop_bank).bits.maps(head(snoop_bank)).bits.states := initial_state_vec
+      /*memory_access_map_table(snoop_bank).bits.maps(head(snoop_bank)).bits.states := initial_state_vec
       memory_access_map_table(snoop_bank).bits.maps(head(snoop_bank)).bits.tag := snoop_tag
       memory_access_map_table(snoop_bank).bits.maps(head(snoop_bank)).valid := true.B
-      head(snoop_bank) := head(snoop_bank) + 1.U //overflow is supposed to occur, wrap around back to front of table
+      head(snoop_bank) := head(snoop_bank) + 1.U*/ //overflow is supposed to occur, wrap around back to front of table
+      memory_access_map_table.bits.maps(head).bits.states := initial_state_vec
+      memory_access_map_table.bits.maps(head).bits.tag := snoop_tag
+      memory_access_map_table.bits.maps(head).valid := true.B
+      head := head + 1.U
     }
     
-    prefetch_input := tag_candidate(snoop_bank)
+    prefetch_input := tag_candidate//(snoop_bank)
+    already_accessed := prefetch_input(snoop_offset)
 
     //pattern matching
     // long crit path for now, can fix later
@@ -126,7 +140,7 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     prefetch_queue.io.deq <> queue_out
 
     //Add generated prefetch to queue
-    when (delta_uint =/= 0.U && io.snoop.valid) {
+    when (delta_uint =/= 0.U && io.snoop.valid && !already_accessed) {
       when (and_back_pos_uint =/= 0.U) { 
         //Positive delta was selected
         pref_out.bits.addr := io.snoop.bits.block_address + (PriorityEncoder(delta_uint) << log2Up(io.snoop.bits.blockBytes))
