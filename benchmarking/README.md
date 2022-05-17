@@ -10,5 +10,5 @@ __Timeliness__ is a measure of how far a prefetch occurs before the memory addre
 
 To run the L1 prefetching benchmark, run
 ```
-source benchmarkingL1.sh [prefetch config] [non-prefetch config]
+./benchmarkingL1.sh [prefetch config] [non-prefetch config] [path to binary]
 ```
