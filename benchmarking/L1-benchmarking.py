@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import sys
 import argparse
@@ -12,10 +12,10 @@ Cycle: decimal_int  PrefetchAddr: hexadecimal_int
 Cycle: decimal_int  PrefetchRespAddr: hexadecimal_int
 """
 
-snoop_regex = re.compile("^Cycle:\s*(\d+)\s*SnoopAddr:\s*([\da-f]+)\s*SnoopBlock:\s*([\da-f]+)\s*")
-resp_regex = re.compile("^Cycle:\s*(\d+)\s*SnoopRespAddr:\s*([\da-f]+)\s*")
-prefetch_regex = re.compile("^Cycle:\s*(\d)*\s*PrefetchAddr:\s*([\da-f]+)\s*")
-prefetch_resp_regex = re.compile("^Cycle:\s*(\d+)*\s*PrefetchRespAddr:\s*([\da-f]+)\s*")
+snoop_regex = re.compile("Cycle: +(\d+)\sSnoopAddr: ([\da-f]+)\sSnoopBlock: ([\da-f]+).*")
+resp_regex = re.compile("Cycle: +(\d+)\sSnoopRespAddr: ([\da-f]+).*")
+prefetch_regex = re.compile("Cycle: +(\d+)\sPrefetchAddr: ([\da-f]+).*")
+prefetch_resp_regex = re.compile("Cycle: +(\d+)\sPrefetchRespAddr: ([\da-f]+).*")
 
 
 def main():
@@ -100,7 +100,7 @@ def main():
     accuracy_resp = float(misses_prevented) / (num_unique_prefetch_resps-len(useful_prefetches) + misses_prevented) * 100
     print("accuracy (acknowledged): " + str(accuracy_resp) + "%")
     if (num_prefetches_accessed != 0):
-        timeliness = (delta_sum + 0.0) / num_prefetches_accessed
+        timeliness = float(delta_sum) / num_prefetches_accessed
         print("timeliness: " + str(timeliness) + " cycles")
 
 
