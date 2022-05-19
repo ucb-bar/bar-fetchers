@@ -38,7 +38,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
   last_snoop := Mux(io.snoop.valid, io.snoop.bits.address, last_snoop)
   last_write := Mux(io.snoop.valid, io.snoop.bits.write, last_write)
   last_delta := Mux(io.snoop.valid, io.snoop.bits.address - last_snoop, last_delta)
-  last_delta_pos := Mux(io.snoop.valid, io.snoop.bits.address > last_snoop, delta_pos)
+  last_delta_pos := Mux(io.snoop.valid, io.snoop.bits.address > last_snoop, last_delta_pos)
 
   when (io.snoop.valid) {
     when (last_delta === (io.snoop.bits.address - last_snoop)) {
@@ -64,7 +64,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
     state := s_idle
   }
 
-  val pref_far_enough = Reg(Bool())
+  val pref_far_enough = RegInit(false.B)
 
   pref_far_enough := prefetch - last_snoop >= (1.U << block_bits.U)
 
