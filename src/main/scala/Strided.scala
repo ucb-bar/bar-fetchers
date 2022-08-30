@@ -11,7 +11,7 @@ import freechips.rocketchip.subsystem.{CacheBlockBytes}
 
 case class SingleStridedPrefetcherParams(
     history: Int = 4, //Number of times a delta must be seen before prefetching
-    ahead: Int = 4 // make this a power of 2 please
+    ahead: Int = 1 // TODO: add assertion to force power of 2
 ) extends CanInstantiatePrefetcher {
   def desc() = "Single Strided Prefetcher"
   def instantiate()(implicit p: Parameters) = Module(new StridedPrefetcher(this)(p))
@@ -41,6 +41,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
   last_delta_pos := Mux(io.snoop.valid, io.snoop.bits.address > last_snoop, last_delta_pos)
 
   when (io.snoop.valid) {
+    //BUG: should check against prefetch delta
     when (last_delta === (io.snoop.bits.address - last_snoop)) {
       //Saturating counter
       history_cnt := Mux(history_cnt === ((params.history * 2) - 1).U, history_cnt, history_cnt + 1.U)
@@ -66,6 +67,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
 
   val pref_far_enough = RegInit(false.B)
 
+  //buggy, L1 thing tho
   pref_far_enough := prefetch - last_snoop >= (1.U << block_bits.U)
 
   io.request.valid := state === s_active && pref_far_enough
@@ -83,10 +85,10 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
   }
 
   when (io.request.fire()) {
+    prefetch := prefetch + delta
     when ((prefetch - last_snoop) < (delta << ahead_bits)) {
       //Only continue prefetching if delta is still same
       state := Mux(history_cnt >= params.history.U, s_active, s_idle)
-      prefetch := prefetch + delta
     } .otherwise {
       state := s_wait
     }
