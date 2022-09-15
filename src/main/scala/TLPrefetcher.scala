@@ -11,8 +11,7 @@ import freechips.rocketchip.subsystem._
 
 case class TLPrefetcherParams(
   prefetchIds: Int = 4,
-  //prefetcher: String => Option[CanInstantiatePrefetcher] = _ => None
-  prefetcher: String => Option[CanInstantiatePrefetcher] = _ => MultiNextLinePrefetcherParams
+  prefetcher: String => Option[CanInstantiatePrefetcher] = _ => None
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
