@@ -26,7 +26,7 @@ class HellaCachePrefetchWrapper(staticIdForMetadataUseOnly: Int, prefetcher: Can
   override val hartIdSinkNodeOpt = cache.hartIdSinkNodeOpt
   override val mmioAddressPrefixSinkNodeOpt = cache.mmioAddressPrefixSinkNodeOpt
   override lazy val module = new HellaCachePrefetchWrapperModule(prefetcher, printPrefetchingStats, this)
-  def getOMSRAMs() = cache.getOMSRAMs()
+  //def getOMSRAMs() = cache.getOMSRAMs()
 }
 
 class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetchingStats: Boolean, outer: HellaCachePrefetchWrapper) extends HellaCacheModule(outer) with MemoryOpConstants{
@@ -66,7 +66,7 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetc
 
   val prefetcher = pP.instantiate()
 
-  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire() && !core_prefetch, 2) && !io.cpu.s2_nack && !RegNext(io.cpu.s1_kill)
+  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire && !core_prefetch, 2) && !io.cpu.s2_nack && !RegNext(io.cpu.s1_kill)
   prefetcher.io.snoop.bits.address := ShiftRegister(io.cpu.req.bits.addr, 2)
   prefetcher.io.snoop.bits.write := ShiftRegister(isWrite(io.cpu.req.bits.cmd), 2)
 
@@ -87,9 +87,9 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetc
     cache.io.cpu.req.bits.phys := false.B
     cache.io.cpu.req.bits.no_alloc := false.B
     cache.io.cpu.req.bits.no_xcpt := false.B
-    when (cache.io.cpu.req.fire()) { in_flight := true.B }
+    when (cache.io.cpu.req.fire) { in_flight := true.B }
     if (printPrefetchingStats) {
-      when (cache.io.cpu.req.fire()) {
+      when (cache.io.cpu.req.fire) {
         //print prefetch
         val last_prefetch_addr = req.bits.block_address
         printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefetchAddr: ${Hexadecimal(req.bits.block_address)}\n")
@@ -115,7 +115,7 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetc
     }
   }
 
-  val prefetch_fire = cache.io.cpu.req.fire() && isPrefetch(cache.io.cpu.req.bits.cmd)
+  val prefetch_fire = cache.io.cpu.req.fire && isPrefetch(cache.io.cpu.req.bits.cmd)
   when (ShiftRegister(prefetch_fire, 1)) {
     cache.io.cpu.s1_kill := false.B
   }
