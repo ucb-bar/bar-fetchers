@@ -25,7 +25,7 @@ class HellaCachePrefetchWrapper(staticIdForMetadataUseOnly: Int, prefetcher: Can
   override val node = cache.node
   override val hartIdSinkNodeOpt = cache.hartIdSinkNodeOpt
   override val mmioAddressPrefixSinkNodeOpt = cache.mmioAddressPrefixSinkNodeOpt
-  override lazy val module = new HellaCachePrefetchWrapperModule(prefetcher, this)
+  override lazy val module = new HellaCachePrefetchWrapperModule(prefetcher, true, this)
 }
 
 class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, printPrefetchingStats: Boolean, outer: HellaCachePrefetchWrapper) extends HellaCacheModule(outer) with MemoryOpConstants{
