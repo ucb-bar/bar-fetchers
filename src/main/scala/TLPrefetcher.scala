@@ -42,7 +42,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val snoop = Wire(Valid(new Snoop))
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
 
-      val enable_print_stats = PlusArg("prefetcher_print_stats", width=1, default=0)(0)
+      val enable_print_stats = RegInit(true.B);//PlusArg("prefetcher_print_stats", width=1, default=0)(0)
 
       // Implement prefetchers per client.
       val prefetchers = edgeOut.master.clients.zipWithIndex.map { case (c,i) =>
@@ -105,7 +105,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       //Memory request buffer
       val reqBufferSize = 16
-      val reqBufferInsert = Reg(Bool())
+      val reqBufferInsert = Wire(Bool())
       val reqBuffer = Reg(Vec(reqBufferSize, Valid(new RequestBufferEntry)))
       val reqBufferHead = Reg(UInt(log2Ceil(reqBufferSize).W))
       val lastHit = Reg(Valid(new RequestBufferEntry))
@@ -123,7 +123,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       for (i <- 0 until reqBufferSize) {
         when (out.d.valid) {
-          when (reqBuffer(i).valid && (reqBuffer(i).bits.source === out.d.bits.source) && (out.d.bits.opcode =/= TLMessages.Hint)) {
+          when (reqBuffer(i).valid && (reqBuffer(i).bits.source === out.d.bits.source)) { //&& (out.d.bits.opcode =/= TLMessages.HintAck)) {
             lastHit.valid := cycle_counter - reqBuffer(i).bits.cycleSent <= 5.U
             lastHit.bits := reqBuffer(i).bits
             //invalidate entry unless entry is being inserted to (no double writes)
@@ -180,16 +180,22 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       midas.targetutils.PerfCounter.identity(lastNMinus1Times, "lastNMinus1Times", "Sum of timeliness values for latest N-1 prefetches")
       midas.targetutils.PerfCounter(usefulPref, "useful_pref", "Useful Prefetches")
       midas.targetutils.PerfCounter(out.a.valid && (out.a.bits.opcode === TLMessages.Hint), "pref", "Prefetches Sent")
-      midas.targetutils.PerfCounter(out.a.valid && (out.a.bits.opcode =/= TLMessages.Hint), "core_req", "Core Memory Requests Sent")
+      //midas.targetutils.PerfCounter(out.a.valid && (out.a.bits.opcode =/= TLMessages.Hint), "core_req", "Core Memory Requests Sent")
+      midas.targetutils.PerfCounter(snoop.valid, "core_req", "Core Memory Requests Sent")
+
+      when (usefulPref) {
+        printf(p"Useful Prefetch!!\n")
+      }
+
 
       when (out.a.valid) {
         val snoopAddrPrint = out.a.bits.address
         val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
         when (enable_print_stats) {
           when (out.a.bits.opcode === TLMessages.Hint) {
-            printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(snoopTxId)}\n")
+            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(snoopTxId)}\n"))
           } .otherwise {
-            printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n")
+            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
           }
         }
       }
@@ -201,7 +207,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       // Response coming back from L2
       when (enable_print_stats && out.d.valid) {
         val dResponseID = out.d.bits.source
-        printf(p"Cycle: ${Decimal(cycle_counter)}\tRespID: ${Decimal(dResponseID)}\n")
+        midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tRespID: ${Decimal(dResponseID)}\n"))
       }
 
       val legal_address = edgeOut.manager.findSafe(out_arb.io.out.bits.block_address).reduce(_||_)
