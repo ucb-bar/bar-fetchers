@@ -190,15 +190,20 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       when (out.a.valid) {
         val snoopAddrPrint = out.a.bits.address
+        val snoopBlockPrint = snoopAddrPrint >> log2Ceil(p(CacheBlockBytes)) << log2Ceil(p(CacheBlockBytes))
         val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
         when (enable_print_stats) {
           when (out.a.bits.opcode === TLMessages.Hint) {
             midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(snoopTxId)}\n"))
           } .otherwise {
-            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
+            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopBlock: 0x${Hexadecimal(snoopBlockPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
           }
         }
       }
+
+      /*when (snoop.valid) {
+        midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoop.bits.address)}\tSnoopBlock: 0x${Hexadecimal(snoop.bits.block_address)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
+      }*/
 
       //Print d channel response + ID + cycles
       //ID: source
