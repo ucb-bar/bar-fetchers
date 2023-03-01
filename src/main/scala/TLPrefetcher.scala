@@ -41,13 +41,14 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       val snoop = Wire(Valid(new Snoop))
       val snoop_client = Wire(UInt(log2Ceil(nClients).W))
+      val snoop_source = Wire(UInt())
 
       val enable_print_stats = RegInit(true.B);//PlusArg("prefetcher_print_stats", width=1, default=0)(0)
 
       // Implement prefetchers per client.
       val prefetchers = edgeOut.master.clients.zipWithIndex.map { case (c,i) =>
         val pParams = params.prefetcher(c.name).getOrElse(NullPrefetcherParams())
-        println(s"Prefetcher for ${c.name}: ${pParams.desc}")
+        println(s"Prefetcher for ${c.name}, client ${i}: ${pParams.desc}")
         val prefetcher = pParams.instantiate()
         prefetcher.io.snoop.valid := snoop.valid && snoop_client === i.U
         prefetcher.io.snoop.bits := snoop.bits
@@ -99,6 +100,7 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       val put = edgeIn.hasData(in.a.bits)
       snoop.bits.write := put || (acq && toT)
       snoop_client := inIdToClientId(in.a.bits.source)
+      snoop_source := in.a.bits.source
 
       //Add cycle counter
       cycle_counter := cycle_counter + 1.U
@@ -189,15 +191,24 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
 
       when (out.a.valid) {
-        val snoopAddrPrint = out.a.bits.address
-        val snoopBlockPrint = snoopAddrPrint >> log2Ceil(p(CacheBlockBytes)) << log2Ceil(p(CacheBlockBytes))
-        val snoopTxId = out.a.bits.source //Hopefully this aligns correctly
+        val aAddrPrint = out.a.bits.address
+        val aBlockPrint = aAddrPrint >> log2Up(p(CacheBlockBytes)) << log2Up(p(CacheBlockBytes))
+        val aTxId = out.a.bits.source //Hopefully this works
         when (enable_print_stats) {
           when (out.a.bits.opcode === TLMessages.Hint) {
-            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(snoopTxId)}\n"))
-          } .otherwise {
-            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopBlock: 0x${Hexadecimal(snoopBlockPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
-          }
+            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tPrefAddr: 0x${Hexadecimal(out.a.bits.address)}\tPrefID: ${Decimal(aTxId)}\n"))
+          } /*.otherwise {
+            midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(aAddrPrint)}\tSnoopBlock: 0x${Hexadecimal(aBlockPrint)}\tSnoopID: ${Decimal(aTxId)}\n"))
+          }*/
+        }
+      }
+
+      when (enable_print_stats) {
+        val snoopAddrPrint = snoop.bits.address
+        val snoopBlockPrint = snoop.bits.block_address
+        val snoopTxId = inIdAdjuster(in.a.bits.source) //Hopefully this works
+        when (snoop.valid && snoop_client === 0.U) { //only print snoops for prefetcher 0 (core 0 dcache, i=0)
+          midas.targetutils.SynthesizePrintf(printf(p"Cycle: ${Decimal(cycle_counter)}\tSnoopAddr: 0x${Hexadecimal(snoopAddrPrint)}\tSnoopBlock: 0x${Hexadecimal(snoopBlockPrint)}\tSnoopID: ${Decimal(snoopTxId)}\n"))
         }
       }
 
