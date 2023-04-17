@@ -101,7 +101,6 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       snoop_client := inIdToClientId(in.a.bits.source)
 
       //MMIO Chicken Bit
-      //BUG: CHECK VALID IM SO DUMB
       when(in.a.valid && in.a.bits.address === params.address.U && put) {
         enable_prefetcher := in.a.bits.data(0)
       }
