@@ -1,6 +1,6 @@
 package prefetchers
 
-import freechips.rocketchip.config.{Config, Field, Parameters}
+import org.chipsalliance.cde.config.{Config, Field, Parameters}
 import freechips.rocketchip.rocket.{BuildHellaCache}
 
 class WithTLDCachePrefetcher(p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams()) extends Config((site, here, up) => {
