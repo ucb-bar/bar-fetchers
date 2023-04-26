@@ -89,12 +89,7 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     val and_back_neg_uint = Wire(UInt(max_k.W))
     val delta_uint = Wire(UInt(max_k.W))
 
-    //TODO: Clean up
-    val forward_map_reverse_broken = Wire(UInt((params.N).W))
-    val shifty = Wire(UInt(line_bits.W))
-    shifty := params.N.U - snoop_offset - 1.U
-    forward_map_reverse_broken := prefetch_input << (shifty)
-    forward_map := Reverse(forward_map_reverse_broken)
+    forward_map := Reverse(prefetch_input << (params.N.U - snoop_offset - 1.U))
     backward_map := prefetch_input >> snoop_offset //should be unsigned
 
     for (k <- 0 until max_k) {
@@ -162,7 +157,6 @@ class MemoryAccessMap(val N: Int) extends Bundle {
   val tag = UInt() // top bits of mem address
 }
 
-// a vec of vecs of vecs
 class MemoryAccessMapBank(val entries: Int, val N: Int) extends Bundle {
   val maps = Vec(entries, Valid(new MemoryAccessMap(N)))
 }
