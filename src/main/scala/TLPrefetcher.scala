@@ -11,14 +11,16 @@ import freechips.rocketchip.subsystem._
 import freechips.rocketchip.regmapper.{HasRegMap, RegField}
 
 case class TLPrefetcherParams(
-  address: Int = 0x1000,
+  address: Option[BigInt] = None,
   prefetchIds: Int = 4,
   prefetcher: String => Option[CanInstantiatePrefetcher] = _ => None
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
+//case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
+//case object PrefetcherMMIOKey extends Field[Option[TLPrefetcherParams]](None)
 
-class TLPrefetcher(implicit p: Parameters) extends LazyModule {
+class TLPrefetcher(hartId: Int)(implicit p: Parameters) extends LazyModule {
   val params = p(TLPrefetcherKey)
 
   def mapInputIds(masters: Seq[TLMasterParameters]) = TLXbar.assignRanges(masters.map(_.sourceId.size + params.prefetchIds))
@@ -37,6 +39,9 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
   lazy val module = new LazyModuleImp(this) {
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
+
+      println(s"PREFETCHER hartId: ${hartId}")
+
       val nClients = edgeOut.master.clients.size
       val outIdMap = edgeOut.master.clients.map(_.sourceId)
       val inIdMap = edgeIn.master.clients.map(_.sourceId)
@@ -101,8 +106,13 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
       snoop_client := inIdToClientId(in.a.bits.source)
 
       //MMIO Chicken Bit
-      when(in.a.valid && in.a.bits.address === params.address.U && put) {
-        enable_prefetcher := in.a.bits.data(0)
+      if (params.address != None) {
+        val mmio_addr = params.address.get
+        when(in.a.valid && in.a.bits.address === mmio_addr.U && put) {
+          enable_prefetcher := in.a.bits.data(0)
+        }
+      } else {
+        enable_prefetcher := true.B
       }
 
       val legal_address = edgeOut.manager.findSafe(out_arb.io.out.bits.block_address).reduce(_||_)
@@ -126,8 +136,8 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 }
 
 object TLPrefetcher {
-  def apply()(implicit p: Parameters) = {
-    val prefetcher = LazyModule(new TLPrefetcher)
+  def apply(hartId: Int)(implicit p: Parameters) = {
+    val prefetcher = LazyModule(new TLPrefetcher(hartId))
     prefetcher.node
   }
 }
@@ -135,11 +145,11 @@ object TLPrefetcher {
 case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
   val where = base.where
   def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
-    TLPrefetcher() :*=* base.injectNode(context)(p)
+    TLPrefetcher(hartId = hartId) :*=* base.injectNode(context)(p)
   }
 }
 
-case object PrefetcherMMIOKey extends Field[Option[TLPrefetcherParams]](None)
+//case object PrefetcherMMIOKey extends Field[Option[TLPrefetcherParams]](None)
 
 trait PrefetcherMMIOIO extends Bundle
 
@@ -156,28 +166,38 @@ trait PrefetcherMMIOModule extends HasRegMap {
 
 class PrefetcherMMIO(params: TLPrefetcherParams, beatBytes: Int)(implicit p: Parameters)
   extends TLRegisterRouter(
-    params.address, "prefetcher", Seq("ucbbar,prefetcher"),
+    params.address.get, "prefetcher", Seq("ucbbar,prefetcher"),
     beatBytes = beatBytes)(
       new TLRegBundle(params, _) with PrefetcherMMIOIO)(
       new TLRegModule(params, _, _) with PrefetcherMMIOModule)
 
+//bleh
+
 trait CanHavePeripheryPrefetcher { this: BaseSubsystem =>
   private val portName = "prefetcher"
 
-  val prefetcher_mmio = p(PrefetcherMMIOKey) match {
-    case Some(params) => {
+  val params = p(TLPrefetcherKey)
+  val prefetcher_mmio = params.address match {
+    case Some(params.address) => {
+      println(s"Prefetcher MMIO at address: ${params.address}")
       val prefetcher_mmio = LazyModule(new PrefetcherMMIO(params, pbus.beatBytes)(p))
       pbus.toVariableWidthSlave(Some(portName)) { prefetcher_mmio.node }
       Some(prefetcher_mmio)
     }
     case None => None
   }
+
+
+  /*val prefetcher_mmio = p(TLPrefetcherKey) match {
+    case Some(params) => {
+      val prefetcher_mmio = LazyModule(new PrefetcherMMIO(params, pbus.beatBytes)(p))
+      pbus.toVariableWidthSlave(Some(portName)) { prefetcher_mmio.node }
+      Some(prefetcher_mmio)
+    }
+    case None => None
+  }*/
 }
 
 trait CanHavePeripheryPrefetcherModuleImp extends LazyModuleImp {
   val outer: CanHavePeripheryPrefetcher
 }
-
-class WithPrefetcherMMIO() extends Config((site, here, up) => {
-  case PrefetcherMMIOKey => Some(TLPrefetcherParams())
-})
