@@ -11,12 +11,12 @@ import freechips.rocketchip.subsystem._
 
 case class TLPrefetcherParams(
   prefetchIds: Int = 4,
-  prefetcher: String => Option[CanInstantiatePrefetcher] = _ => None
+  prefetcher: String => Option[Seq[CanInstantiatePrefetcher]] = _ => None
 )
 
 case object TLPrefetcherKey extends Field[TLPrefetcherParams](TLPrefetcherParams())
 
-class TLPrefetcher(implicit p: Parameters) extends LazyModule {
+class TLPrefetcher(hartId: Int)(implicit p: Parameters) extends LazyModule {
   val params = p(TLPrefetcherKey)
 
   def mapInputIds(masters: Seq[TLMasterParameters]) = TLXbar.assignRanges(masters.map(_.sourceId.size + params.prefetchIds))
@@ -44,9 +44,10 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       // Implement prefetchers per client.
       val prefetchers = edgeOut.master.clients.zipWithIndex.map { case (c,i) =>
-        val pParams = params.prefetcher(c.name).getOrElse(NullPrefetcherParams())
-        println(s"Prefetcher for ${c.name}: ${pParams.desc}")
-        val prefetcher = pParams.instantiate()
+        val pParams = params.prefetcher(c.name).getOrElse(Seq(NullPrefetcherParams()))
+        val prefetcherType = if (pParams.length == 1) pParams(0) else pParams(hartId)
+        println(s"Prefetcher for ${c.name}: ${prefetcherType.desc}")
+        val prefetcher = prefetcherType.instantiate()
         prefetcher.io.snoop.valid := snoop.valid && snoop_client === i.U
         prefetcher.io.snoop.bits := snoop.bits
         prefetcher
@@ -117,8 +118,8 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 }
 
 object TLPrefetcher {
-  def apply()(implicit p: Parameters) = {
-    val prefetcher = LazyModule(new TLPrefetcher)
+  def apply(hartId: Int)(implicit p: Parameters) = {
+    val prefetcher = LazyModule(new TLPrefetcher(hartId))
     prefetcher.node
   }
 }
@@ -126,6 +127,6 @@ object TLPrefetcher {
 case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike) extends TilePortParamsLike {
   val where = base.where
   def injectNode(context: Attachable)(implicit p: Parameters): TLNode = {
-    TLPrefetcher() :*=* base.injectNode(context)(p)
+    TLPrefetcher(hartId) :*=* base.injectNode(context)(p)
   }
 }
