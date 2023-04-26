@@ -3,7 +3,7 @@ package prefetchers
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.{IO}
-import freechips.rocketchip.config.{Field, Parameters, Config}
+import org.chipsalliance.cde.config.{Field, Parameters, Config}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 import freechips.rocketchip.tilelink._
