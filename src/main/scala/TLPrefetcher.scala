@@ -145,8 +145,6 @@ case class TilePrefetchingMasterPortParams(hartId: Int, base: TilePortParamsLike
   }
 }
 
-//case object PrefetcherMMIOKey extends Field[Option[TLPrefetcherParams]](None)
-
 trait PrefetcherMMIOIO extends Bundle
 
 trait PrefetcherMMIOModule extends HasRegMap {
@@ -155,9 +153,8 @@ trait PrefetcherMMIOModule extends HasRegMap {
 
   val prefetcher_enable = Reg(Bool())
   regmap(
-  0x00 -> Seq(
-    RegField.w(1, prefetcher_enable))
-  )
+    0x00 -> Seq(
+      RegField.w(1, prefetcher_enable)))
 }
 
 class PrefetcherMMIO(params: TLPrefetcherParams, beatBytes: Int)(implicit p: Parameters)
@@ -167,12 +164,12 @@ class PrefetcherMMIO(params: TLPrefetcherParams, beatBytes: Int)(implicit p: Par
       new TLRegBundle(params, _) with PrefetcherMMIOIO)(
       new TLRegModule(params, _, _) with PrefetcherMMIOModule)
 
-//bleh
-
 trait CanHavePeripheryPrefetcher { this: BaseSubsystem =>
   private val portName = "prefetcher"
 
   val params_mmio = p(TLPrefetcherKey)
+  //check that prefetcher has been defined
+  require(params_mmio.prefetcher("DCache") != None || params_mmio.prefetcher("ICache") != None)
   val prefetcher_mmio = params_mmio.address match {
     case Some(addr) => {
       println(s"Prefetcher MMIO at address: ${addr}")
