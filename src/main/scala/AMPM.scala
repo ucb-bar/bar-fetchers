@@ -10,7 +10,7 @@ Computing Machinery, New York, NY, USA, 499–500.
 https://doi.org/10.1145/1542275.1542349
 --------------------------------------------------------------------- */
 
-package prefetchers
+package barf
 
 import chisel3._
 import chisel3.util._

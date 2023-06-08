@@ -1,4 +1,4 @@
-package prefetchers
+package barf
 
 import org.chipsalliance.cde.config.{Config, Field, Parameters}
 import freechips.rocketchip.rocket.{BuildHellaCache}
