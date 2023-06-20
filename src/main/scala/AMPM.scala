@@ -100,8 +100,8 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
       and_back_pos(i) := logic_pos(i) & !backward_map(i)
       and_back_neg(i) := logic_neg(i) & !forward_map(i)
     }
-    and_back_pos_uint := and_back_pos.asUInt()
-    and_back_neg_uint := and_back_neg.asUInt()
+    and_back_pos_uint := and_back_pos.asUInt
+    and_back_neg_uint := and_back_neg.asUInt
     //Prioritize positive delta
     delta_uint := Mux(and_back_pos_uint =/= 0.U, and_back_pos_uint, and_back_neg_uint)
 
