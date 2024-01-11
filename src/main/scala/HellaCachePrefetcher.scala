@@ -11,16 +11,16 @@ import freechips.rocketchip.subsystem.{CacheBlockBytes}
 import freechips.rocketchip.diplomacy._
 
 object HellaCachePrefetchWrapperFactory {
-  def apply(hartIds: Seq[Int], prefetcher: CanInstantiatePrefetcher, base: BaseTile => Parameters => HellaCache) = (tile: BaseTile) => (p: Parameters) => {
-    if (hartIds.contains(tile.staticIdForMetadataUseOnly)) {
-      new HellaCachePrefetchWrapper(tile.staticIdForMetadataUseOnly, prefetcher, base(tile))(p)
+  def apply(tileIds: Seq[Int], prefetcher: CanInstantiatePrefetcher, base: BaseTile => Parameters => HellaCache) = (tile: BaseTile) => (p: Parameters) => {
+    if (tileIds.contains(tile.tileId)) {
+      new HellaCachePrefetchWrapper(tile.tileId, prefetcher, base(tile))(p)
     } else {
       base(tile)(p)
     }
   }
 }
 
-class HellaCachePrefetchWrapper(staticIdForMetadataUseOnly: Int, prefetcher: CanInstantiatePrefetcher, inner: Parameters => HellaCache)(implicit p: Parameters) extends HellaCache(staticIdForMetadataUseOnly)(p) {
+class HellaCachePrefetchWrapper(tileId: Int, prefetcher: CanInstantiatePrefetcher, inner: Parameters => HellaCache)(implicit p: Parameters) extends HellaCache(tileId)(p) {
   val cache = LazyModule(inner(p))
   override val node = cache.node
   override val hartIdSinkNodeOpt = cache.hartIdSinkNodeOpt
