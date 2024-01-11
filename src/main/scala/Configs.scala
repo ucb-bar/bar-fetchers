@@ -15,6 +15,6 @@ class WithTLICachePrefetcher(p: CanInstantiatePrefetcher = SingleNextLinePrefetc
   )
 })
 
-class WithHellaCachePrefetcher(hartIds: Seq[Int], p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams(handleVA=true)) extends Config((site, here, up) => {
-  case BuildHellaCache => HellaCachePrefetchWrapperFactory.apply(hartIds, p, up(BuildHellaCache))
+class WithHellaCachePrefetcher(tileIds: Seq[Int], p: CanInstantiatePrefetcher = MultiNextLinePrefetcherParams(handleVA=true)) extends Config((site, here, up) => {
+  case BuildHellaCache => HellaCachePrefetchWrapperFactory.apply(tileIds, p, up(BuildHellaCache))
 })

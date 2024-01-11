@@ -11,8 +11,8 @@ import freechips.rocketchip.subsystem.{CacheBlockBytes}
 import freechips.rocketchip.diplomacy._
 
 object HellaCachePrefetchWrapperFactory {
-  def apply(hartIds: Seq[Int], prefetcher: CanInstantiatePrefetcher, base: BaseTile => Parameters => HellaCache) = (tile: BaseTile) => (p: Parameters) => {
-    if (hartIds.contains(tile.tileId)) {
+  def apply(tileIds: Seq[Int], prefetcher: CanInstantiatePrefetcher, base: BaseTile => Parameters => HellaCache) = (tile: BaseTile) => (p: Parameters) => {
+    if (tileIds.contains(tile.tileId)) {
       new HellaCachePrefetchWrapper(tile.tileId, prefetcher, base(tile))(p)
     } else {
       base(tile)(p)
