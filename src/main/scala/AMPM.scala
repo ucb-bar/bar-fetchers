@@ -136,7 +136,7 @@ class AMPMPrefetcher(params: SingleAMPMPrefetcherParams)(implicit p: Parameters)
     io.request.bits.write := prefetch_queue.io.deq.bits.write
 
     //Dequeue
-    when (io.request.fire()) {
+    when (io.request.fire) {
       prefetch_queue.io.deq.ready := true.B
       reset_deq := true.B
       prefetch_active := false.B

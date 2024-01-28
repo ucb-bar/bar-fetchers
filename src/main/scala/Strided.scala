@@ -103,7 +103,7 @@ class StridedPrefetcher(params: SingleStridedPrefetcherParams)(implicit p: Param
     }
   }
 
-  when (io.request.fire()) {
+  when (io.request.fire) {
     prefetch := prefetch + delta
     when ((delta_pos && (prefetch - last_snoop) < (delta << ahead_bits)) || (!delta_pos && (last_snoop - prefetch) < (delta << ahead_bits))) {
       //Only continue prefetching if delta is still same

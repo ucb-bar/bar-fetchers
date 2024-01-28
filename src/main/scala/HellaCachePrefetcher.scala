@@ -2,7 +2,6 @@ package barf
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.{IO}
 import org.chipsalliance.cde.config.{Config, Field, Parameters}
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.rocket.constants.{MemoryOpConstants}
@@ -63,7 +62,7 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, outer: Hella
 
   val prefetcher = pP.instantiate()
 
-  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire() && !core_prefetch, 2) && !io.cpu.s2_nack && !RegNext(io.cpu.s1_kill)
+  prefetcher.io.snoop.valid := ShiftRegister(io.cpu.req.fire && !core_prefetch, 2) && !io.cpu.s2_nack && !RegNext(io.cpu.s1_kill)
   prefetcher.io.snoop.bits.address := ShiftRegister(io.cpu.req.bits.addr, 2)
   prefetcher.io.snoop.bits.write := ShiftRegister(isWrite(io.cpu.req.bits.cmd), 2)
 
@@ -84,10 +83,10 @@ class HellaCachePrefetchWrapperModule(pP: CanInstantiatePrefetcher, outer: Hella
     cache.io.cpu.req.bits.phys := false.B
     cache.io.cpu.req.bits.no_alloc := false.B
     cache.io.cpu.req.bits.no_xcpt := false.B
-    when (cache.io.cpu.req.fire()) { in_flight := true.B }
+    when (cache.io.cpu.req.fire) { in_flight := true.B }
   }
 
-  val prefetch_fire = cache.io.cpu.req.fire() && isPrefetch(cache.io.cpu.req.bits.cmd)
+  val prefetch_fire = cache.io.cpu.req.fire && isPrefetch(cache.io.cpu.req.bits.cmd)
   when (ShiftRegister(prefetch_fire, 1)) {
     cache.io.cpu.s1_kill := false.B
   }

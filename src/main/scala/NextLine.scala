@@ -60,7 +60,7 @@ class SingleNextLinePrefetcher(params: SingleNextLinePrefetcherParams)(implicit 
   io.request.bits.address := Cat(Mux(wrap, wrap_block_upper, block_upper), prefetch) << log2Up(io.request.bits.blockBytes)
 
 
-  when (io.request.fire()) {
+  when (io.request.fire) {
     prefetch := prefetch + 1.U
     when (prefetch === ~(0.U(lowerBits.W))) {
       if (params.handleVA) {

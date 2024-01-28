@@ -2,7 +2,6 @@ package barf
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.{IO}
 import org.chipsalliance.cde.config.{Field, Parameters}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
@@ -86,9 +85,9 @@ class TLPrefetcher(implicit p: Parameters) extends LazyModule {
 
       tracker := (tracker
         ^ ((out.d.valid && d_is_prefetch) << outIdToPrefetchId(out.d.bits.source))
-        ^ ((out.a.fire() && !in.a.valid) << next_tracker)
+        ^ ((out.a.fire && !in.a.valid) << next_tracker)
       )
-      snoop.valid := in.a.fire() && edgeIn.manager.supportsAcquireBFast(in.a.bits.address, log2Ceil(p(CacheBlockBytes)).U)
+      snoop.valid := in.a.fire && edgeIn.manager.supportsAcquireBFast(in.a.bits.address, log2Ceil(p(CacheBlockBytes)).U)
       snoop.bits.address := in.a.bits.address
       val acq = in.a.bits.opcode.isOneOf(TLMessages.AcquireBlock, TLMessages.AcquirePerm)
       val toT = in.a.bits.param.isOneOf(TLPermissions.NtoT, TLPermissions.BtoT)
